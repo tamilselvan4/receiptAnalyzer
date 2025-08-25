@@ -143,7 +143,7 @@ public class HomeView extends AppLayout {
 
     private List<Expense> getExpenses() {
         return List.of(
-                new Expense(
+                /*new Expense(
                         "Groceries",
                         new BigDecimal("5.00"),
                         new BigDecimal("0.50"),
@@ -169,7 +169,7 @@ public class HomeView extends AppLayout {
                         LocalDate.of(2024, 6, 20),
                         "Utilities",
                         "June electricity payment"
-                )
+                )*/
         );
     }
 }

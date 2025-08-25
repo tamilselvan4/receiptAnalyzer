@@ -3,16 +3,18 @@ package com.expensetracker.service;
 import net.sourceforge.tess4j.ITesseract;
 import net.sourceforge.tess4j.Tesseract;
 import net.sourceforge.tess4j.TesseractException;
+import org.apache.commons.io.FileUtils;
 import org.bytedeco.javacpp.Loader;
 import org.bytedeco.opencv.opencv_java;
 import org.springframework.stereotype.Service;
-import org.opencv.core.Core;
-import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 
 @Service
 public class OcrService {
@@ -33,9 +35,9 @@ public class OcrService {
         }
     }
 
-    public String extractText(String path) {
+    public String extractText(String path, String uuid, String ext, String expUploadPath) {
 
-        preprocess(path);
+        preprocess(path, uuid, ext, expUploadPath);
 
         ITesseract tesseract = new Tesseract();
 
@@ -45,15 +47,25 @@ public class OcrService {
         tesseract.setOcrEngineMode(1); // Neural nets LSTM engine
 
         try {
-            File file = new File("/Users/tamilselvans/Downloads/temp.png");
-            return tesseract.doOCR(file);
+//            File file = new File("/Users/tamilselvans/Downloads/temp.png");
+            File file = new File(expUploadPath + "files/" + uuid + "." + ext);
+            String txt = tesseract.doOCR(file);
+
+            File txtFile = new File(expUploadPath + "txt/", uuid + ".txt");
+            try {
+                FileUtils.writeStringToFile(txtFile, txt, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                System.out.println(e);
+            }
+
+            return txt;
         } catch (TesseractException e) {
             System.err.println("Error during OCR: " + e.getMessage());
         }
         return "";
     }
 
-    public void preprocess(String path) {
+    public void preprocess(String path, String uuid, String ext, String expUploadPath) {
 
         Mat img = Imgcodecs.imread(path);
 
@@ -68,7 +80,8 @@ public class OcrService {
         Mat thresh = new Mat();
         Imgproc.threshold(gray, thresh, 150, 255, Imgproc.THRESH_BINARY);
 
-        String outPath = "/Users/tamilselvans/Downloads/temp.png";
+//        String outPath = "/Users/tamilselvans/Downloads/temp.png";
+        String outPath = expUploadPath + "files/" + uuid + "." + ext;
         Imgcodecs.imwrite(outPath, thresh);
 
         System.out.println("✅ Preprocessed image saved at: " + outPath);
@@ -76,7 +89,7 @@ public class OcrService {
 
     public static void main(String[] args) {
         OcrService ocrService = new OcrService();
-        String result = ocrService.extractText("/Users/tamilselvans/Downloads/invoice.png");
+        String result = ocrService.extractText("/Users/tamilselvans/Downloads/invoice.png", UUID.randomUUID().toString(), "png", "/Users/tamilselvans/M.E/project/uploads/");
         System.out.println("Extracted Text:");
         System.out.println(result);
     }

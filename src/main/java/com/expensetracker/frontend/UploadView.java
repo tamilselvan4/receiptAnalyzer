@@ -21,13 +21,20 @@ import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
 import com.vaadin.flow.router.Route;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.UUID;
 
 @Route("/add")
+@Component
 public class UploadView extends VerticalLayout {
+
+    @Value("${expense.file.upload.path}")
+    private String expenseFileUploadPath;
 
     private final Image imagePreview;
     private final MemoryBuffer buffer;
@@ -40,12 +47,11 @@ public class UploadView extends VerticalLayout {
     private final TextField categoryField;
     private final TextArea commentField;
 
-    Expense expense;
+    Expense expense = new Expense();
 
     @Autowired
     private ExpenseService expenseService;
 
-//    private final ExpenseService expenseService = new ExpenseService();
     private final OcrService ocrService = new OcrService();
     private final AiParserService aiParserService = new AiParserService();
 
@@ -102,8 +108,8 @@ public class UploadView extends VerticalLayout {
         });
 
         uploadBtn.addClickListener(e -> {
-            if (buffer.getInputStream() == null) {
-                Notification.show("Please upload a file first.", 2000, Notification.Position.TOP_CENTER);
+            if (expense.getAmount() == null) {
+                Notification.show("Please enter the Expense Amount", 2000, Notification.Position.TOP_CENTER);
                 return;
             }
 
@@ -140,6 +146,8 @@ public class UploadView extends VerticalLayout {
 
     private void showImagePreview() {
         String mimeType = buffer.getFileData().getMimeType();
+        String uuid = "1_" + UUID.randomUUID();
+        System.out.println("Path: " + expenseFileUploadPath);
         if (mimeType.startsWith("image/")) {
             try {
                 byte[] bytes = buffer.getInputStream().readAllBytes();
@@ -150,14 +158,21 @@ public class UploadView extends VerticalLayout {
                 imagePreview.setHeight("100%");
                 upload.setVisible(false);
 
-                File tempFile = File.createTempFile("upload", ".png"); // or ".jpg" depending on input
+                String fileName = buffer.getFileName();
+                int dotIndex = fileName.lastIndexOf('.');
+                String extension = (dotIndex > 0) ? fileName.substring(fileName.lastIndexOf('.') + 1) : "";
+
+                File tempFile = File.createTempFile(uuid, extension); // or ".jpg" depending on input
                 try (FileOutputStream fos = new FileOutputStream(tempFile)) {
                     fos.write(bytes);
                 }
 
-                String extractedText = ocrService.extractText(tempFile.getAbsolutePath());
+                String extractedText = ocrService.extractText(tempFile.getAbsolutePath(), uuid, extension, expenseFileUploadPath);
 
-                /*String jsonResult = "{\n" +
+                System.out.println("**********************************");
+//                System.out.println(extractedText);
+                System.out.println("**********************************");
+                String jsonResult = "{\n" +
                         "  \"name\": \"Groceries\",\n" +
                         "  \"amount\": 1500.75,\n" +
                         "  \"tax\": 75.50,\n" +
@@ -165,9 +180,9 @@ public class UploadView extends VerticalLayout {
                         "  \"date\": \"2024-06-10\",\n" +
                         "  \"category\": \"Food\",\n" +
                         "  \"comment\": \"Weekly shopping at supermarket\"\n" +
-                        "}";*/
+                        "}";
 
-                String jsonResult = aiParserService.extractInvoiceDataUsingGenAI(extractedText);
+//                String jsonResult = aiParserService.extractInvoiceDataUsingGenAI(extractedText);
 //                String jsonResult = aiParserService.extractInvoiceDataUsingLocalMethod(extractedText);
 
                 ObjectMapper mapper = new ObjectMapper();

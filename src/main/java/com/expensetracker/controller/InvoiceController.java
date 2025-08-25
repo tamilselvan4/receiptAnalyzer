@@ -7,11 +7,11 @@ import com.expensetracker.service.OcrService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/invoices")
@@ -49,7 +49,7 @@ public class InvoiceController {
 
         String extractedText = "";
         try {
-            extractedText = ocrService.extractText(tempFile.getAbsolutePath());
+            extractedText = ocrService.extractText(tempFile.getAbsolutePath(), UUID.randomUUID().toString(), "png", "/Users/tamilselvans/M.E/project/uploads/");
         } finally {
             if (tempFile.exists()) {
                 System.out.println("tempFile deleted: " + tempFile.delete());

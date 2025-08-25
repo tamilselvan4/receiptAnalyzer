@@ -12,6 +12,6 @@ public class ExpenseService {
     private ExpenseRepo expenseRepo;
 
     public void saveExpense(Expense expense) {
-        expenseRepo.save(expense);
+//        expenseRepo.save(expense);
     }
 }

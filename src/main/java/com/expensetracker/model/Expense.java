@@ -14,6 +14,10 @@ public class Expense {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
     @Column()
     private String name;
 
@@ -34,12 +38,15 @@ public class Expense {
 
     private String comment;
 
+    @Column(name = "file_name", length = 70)
+    private String fileName;
 
     public Expense() {
 
     }
 
-    public Expense(String name, BigDecimal amount, BigDecimal tax, String currency, LocalDate date, String category, String comment) {
+    public Expense(User user, String name, BigDecimal amount, BigDecimal tax, String currency, LocalDate date, String category, String comment, String fileName) {
+        this.user = user;
         this.name = name;
         this.amount = amount;
         this.tax = tax;
@@ -47,6 +54,7 @@ public class Expense {
         this.date = date;
         this.category = category;
         this.comment = comment;
+        this.fileName = fileName;
     }
 
     public Long getId() {
@@ -55,6 +63,14 @@ public class Expense {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
     }
 
     public String getCurrency() {
@@ -113,4 +129,11 @@ public class Expense {
         this.comment = comment;
     }
 
+    public String getFileName() {
+        return fileName;
+    }
+
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
 }

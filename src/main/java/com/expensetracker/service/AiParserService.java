@@ -124,7 +124,7 @@ public class AiParserService {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
 
         try {
-            ResponseEntity<Map> response = restTemplate.postForEntity("http://localhost:1234/v1/chat/completions", request, Map.class);
+            ResponseEntity<Map> response = restTemplate.postForEntity(lmStudioUrl, request, Map.class);
 
             if (response.getStatusCode() == HttpStatus.OK) {
                 Map<String, Object> body = response.getBody();
@@ -148,7 +148,7 @@ public class AiParserService {
     public static void main(String[] args) {
         AiParserService service = new AiParserService();
         OcrService ocrService = new OcrService();
-        String ocrText = ocrService.extractText("/Users/tamilselvans/Downloads/invoice.png");
+        String ocrText = ocrService.extractText("/Users/tamilselvans/Downloads/invoice.png", UUID.randomUUID().toString(), "png", "/Users/tamilselvans/M.E/project/uploads/");
 //        String result = service.extractInvoiceData(ocrText);
         String result = service.extractInvoiceDataUsingGenAI(ocrText);
         System.out.println("Extracted Invoice Data: " + result);
