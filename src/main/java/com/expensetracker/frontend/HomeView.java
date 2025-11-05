@@ -1,6 +1,7 @@
 package com.expensetracker.frontend;
 
 import com.expensetracker.model.Expense;
+import com.expensetracker.service.ExpenseService;
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.Grid;
@@ -15,16 +16,24 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.tabs.Tab;
 import com.vaadin.flow.component.tabs.Tabs;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.spring.annotation.UIScope;
+import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 
 @Route("")
+@UIScope
+@Component
 public class HomeView extends AppLayout {
 
-    public HomeView() {
-        // Sidebar tabs with icons
+//    @Autowired
+    private final ExpenseService expenseService;
+
+    public HomeView(ExpenseService expenseService) {
+
+        this.expenseService = expenseService;
+
         Tab homeTab = new Tab(new Icon(VaadinIcon.HOME), new Paragraph("Home"));
         Tab calendarTab = new Tab(new Icon(VaadinIcon.CALENDAR), new Paragraph("Calendar"));
         Tab reportTab = new Tab(new Icon(VaadinIcon.CHART), new Paragraph("Report"));
@@ -33,7 +42,6 @@ public class HomeView extends AppLayout {
         tabs.setOrientation(Tabs.Orientation.VERTICAL);
         tabs.getStyle().set("background", "#f8f9fa").set("padding", "1rem").set("minWidth", "160px");
 
-        // Top bar with logo and Add Expense button, vertically centered
         H1 title = new H1("Expense Tracker");
         title.getStyle().set("margin", "0").set("color", "#007bff");
         Button addExpenseButton = new Button("Add Expense", new Icon(VaadinIcon.PLUS), e -> getUI().ifPresent(ui -> ui.navigate("/add")));
@@ -46,14 +54,12 @@ public class HomeView extends AppLayout {
         topBar.setPadding(true);
         topBar.getStyle().set("background", "#91bafa").set("color", "white");
 
-        // Main content area
         VerticalLayout contentArea = new VerticalLayout();
         contentArea.setSizeFull();
         contentArea.setPadding(true);
         contentArea.setSpacing(true);
         contentArea.add(getHomeTabContent());
 
-        // Tab selection logic
         tabs.addSelectedChangeListener(event -> {
             contentArea.removeAll();
             Tab selected = event.getSelectedTab();
@@ -142,7 +148,8 @@ public class HomeView extends AppLayout {
     }
 
     private List<Expense> getExpenses() {
-        return List.of(
+        return expenseService.getExpenseByUserId(1L);
+//        return List.of(
                 /*new Expense(
                         "Groceries",
                         new BigDecimal("5.00"),
@@ -170,6 +177,6 @@ public class HomeView extends AppLayout {
                         "Utilities",
                         "June electricity payment"
                 )*/
-        );
+//        );
     }
 }

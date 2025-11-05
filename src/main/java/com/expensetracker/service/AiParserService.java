@@ -14,8 +14,8 @@ public class AiParserService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    @Value("${lm.studio.url}")
-    private String lmStudioUrl;
+//    @Value("${lm.studio.url}")
+    private String lmStudioUrl = "http://localhost:1234/v1/chat/completions";
 
     public String extractInvoiceData(String ocrText) {
         String prompt = "Extract and return the following fields in JSON format:\n" +
@@ -47,7 +47,7 @@ public class AiParserService {
         Map<String, Object> body = new HashMap<>();
         body.put("messages", List.of(message));
         body.put("temperature", 0.2);
-        body.put("model", "local-model");  // Optional, LM Studio uses default
+        body.put("model", "local-model");
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
@@ -92,7 +92,7 @@ public class AiParserService {
         return response.text();
     }
 
-    public String extractInvoiceDataUsingLocalMethod(String ocrText) {
+    public String extractInvoiceDataUsingLocalModel(String ocrText) {
 
         String prompt = "From the following OCR text, extract the expense information and return it as a valid JSON object only. " +
                 "Do not include any explanation or formatting. The JSON must have the following fields:\n" +
@@ -105,8 +105,17 @@ public class AiParserService {
                 "- comment: Any additional relevant notes or invoice numbers\n\n" +
                 "Return only the JSON object with no markdown or extra characters.\n\n" +
                 "OCR Text:\n" + ocrText;
+        /*String prompt = "From the following OCR text, extract the expense details and return them as a raw, valid JSON object. " +
+                "⚠️ STRICTLY follow these rules:\n" +
+                "- Use double quotes (\") for all field names and string values\n" +
+                "- Return only the following fields in the JSON object: name, amount, tax, currency, date, category, comment\n" +
+                "- Do not add any extra fields like 'bill_to', 'ship_to', 'vendor_address', etc.\n" +
+                "- Do not include markdown or explanation — only return a raw JSON object that starts with '{' and ends with '}'\n" +
+                "- Date must be in YYYY-MM-DD format\n" +
+                "- Default currency is 'INR' if not found\n" +
+                "- Set tax to 0 if not found\n\n" +
+                "OCR Text:\n" + ocrText;*/
 
-        // Build the request body
         Map<String, Object> message = Map.of(
                 "role", "user",
                 "content", prompt
@@ -134,7 +143,10 @@ public class AiParserService {
                     Map<String, Object> firstChoice = choices.get(0);
                     Map<String, Object> mes = (Map<String, Object>) firstChoice.get("message");
                     String content = (String) mes.get("content");
-                    return content.trim();
+                    return content.trim()
+                            .replaceAll("(?s)```(json)?", "")
+                            .replaceAll("^[^\\{]*", "")
+                            .replaceAll("[^\\}]*$", "");
                 }
             }
 

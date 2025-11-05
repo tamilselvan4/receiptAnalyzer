@@ -4,6 +4,7 @@ import com.expensetracker.model.Expense;
 import com.expensetracker.repository.ExpenseRepo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import java.util.List;
 
 @Service
 public class ExpenseService {
@@ -12,6 +13,10 @@ public class ExpenseService {
     private ExpenseRepo expenseRepo;
 
     public void saveExpense(Expense expense) {
-//        expenseRepo.save(expense);
+        expenseRepo.save(expense);
+    }
+
+    public List<Expense> getExpenseByUserId(long userId) {
+        return expenseRepo.getByUserId(userId);
     }
 }

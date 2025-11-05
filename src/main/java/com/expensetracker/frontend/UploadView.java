@@ -1,12 +1,13 @@
 package com.expensetracker.frontend;
 
 import com.expensetracker.model.Expense;
-import com.expensetracker.service.AiParserService;
-import com.expensetracker.service.ExpenseService;
-import com.expensetracker.service.OcrService;
+import com.expensetracker.model.ReceiptResponse;
+import com.expensetracker.service.*;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Image;
@@ -20,6 +21,7 @@ import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.spring.annotation.UIScope;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -30,6 +32,7 @@ import java.io.IOException;
 import java.util.UUID;
 
 @Route("/add")
+@UIScope
 @Component
 public class UploadView extends VerticalLayout {
 
@@ -39,6 +42,7 @@ public class UploadView extends VerticalLayout {
     private final Image imagePreview;
     private final MemoryBuffer buffer;
     private final Upload upload;
+    private final Checkbox useExternalAICheckBox = new Checkbox();
 
     private final TextField nameField;
     private final DatePicker dateField;
@@ -48,12 +52,18 @@ public class UploadView extends VerticalLayout {
     private final TextArea commentField;
 
     Expense expense = new Expense();
+    ReceiptResponse receipt = new ReceiptResponse();
 
     @Autowired
     private ExpenseService expenseService;
 
+    @Autowired
+    private UserService userService;
+
     private final OcrService ocrService = new OcrService();
     private final AiParserService aiParserService = new AiParserService();
+    private final LocalAiExtractionService localService = new LocalAiExtractionService();
+    private final AgenticRagService agenticRagService = new AgenticRagService();
 
     public UploadView() {
 
@@ -113,7 +123,8 @@ public class UploadView extends VerticalLayout {
                 return;
             }
 
-            expenseService.saveExpense(expense);
+            //expenseService.saveExpense(expense);
+            getUI().ifPresent(ui -> ui.navigate("/"));
             Notification.show("Expense submitted!", 2000, Notification.Position.TOP_CENTER);
         });
 
@@ -135,7 +146,9 @@ public class UploadView extends VerticalLayout {
                 .set("border", "1px solid #eee")
                 .set("borderRadius", "8px");
 
-        viewerLayout.add(imagePreview, upload);
+        useExternalAICheckBox.setLabel("Use API");
+
+        viewerLayout.add(imagePreview, upload, useExternalAICheckBox);
 
         HorizontalLayout mainLayout = new HorizontalLayout(viewerLayout, formLayout);
         mainLayout.setSizeFull();
@@ -162,36 +175,44 @@ public class UploadView extends VerticalLayout {
                 int dotIndex = fileName.lastIndexOf('.');
                 String extension = (dotIndex > 0) ? fileName.substring(fileName.lastIndexOf('.') + 1) : "";
 
-                File tempFile = File.createTempFile(uuid, extension); // or ".jpg" depending on input
+                File tempFile = File.createTempFile(uuid, extension);
                 try (FileOutputStream fos = new FileOutputStream(tempFile)) {
                     fos.write(bytes);
                 }
 
-                String extractedText = ocrService.extractText(tempFile.getAbsolutePath(), uuid, extension, expenseFileUploadPath);
+                if (!useExternalAICheckBox.getValue()) {
+                    String jsonResult = localService.localTextExtraction(tempFile.getAbsolutePath());
 
-                System.out.println("**********************************");
-//                System.out.println(extractedText);
-                System.out.println("**********************************");
-                String jsonResult = "{\n" +
-                        "  \"name\": \"Groceries\",\n" +
-                        "  \"amount\": 1500.75,\n" +
-                        "  \"tax\": 75.50,\n" +
-                        "  \"currency\": \"INR\",\n" +
-                        "  \"date\": \"2024-06-10\",\n" +
-                        "  \"category\": \"Food\",\n" +
-                        "  \"comment\": \"Weekly shopping at supermarket\"\n" +
-                        "}";
+                    ObjectMapper mapper = new ObjectMapper();
+                    mapper.registerModule(new JavaTimeModule());
+                    mapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
+                    receipt = mapper.readValue(jsonResult, ReceiptResponse.class);
+                    setReceiptData(receipt);
+                } else {
 
-//                String jsonResult = aiParserService.extractInvoiceDataUsingGenAI(extractedText);
-//                String jsonResult = aiParserService.extractInvoiceDataUsingLocalMethod(extractedText);
+                    String extractedText = ocrService.extractText(tempFile.getAbsolutePath(), uuid, extension, expenseFileUploadPath);
 
-                ObjectMapper mapper = new ObjectMapper();
-                mapper.registerModule(new JavaTimeModule());
-                expense = mapper.readValue(jsonResult, Expense.class);
+                    System.out.println("**********************************");
+                    System.out.println(extractedText);
+                    System.out.println("**********************************");
 
-                setExpenseData(expense);
+                    String jsonResult = aiParserService.extractInvoiceDataUsingGenAI(extractedText);
+                    //String jsonResult = aiParserService.extractInvoiceDataUsingLocalModel(extractedText);
+                    //String jsonResult = localService.localTextExtraction(tempFile.getAbsolutePath());
 
-                tempFile.deleteOnExit();
+                    System.out.println(jsonResult);
+
+                    ObjectMapper mapper = new ObjectMapper();
+                    mapper.registerModule(new JavaTimeModule());
+                    expense = mapper.readValue(jsonResult, Expense.class);
+
+                    setExpenseData(expense);
+
+                    expense.setUser(userService.getUser(1L));
+                    expense.setFileName(uuid + "." + extension);
+
+                }
+
 
             } catch (IOException ex) {
                 System.out.println("Exception: " + ex);
@@ -200,6 +221,14 @@ public class UploadView extends VerticalLayout {
         } else {
             imagePreview.setSrc("https://cdn-icons-png.flaticon.com/512/337/337946.png");
         }
+    }
+
+    private void setReceiptData(ReceiptResponse expense) {
+        nameField.setValue(expense.getCompany());
+        dateField.setValue(expense.getDate());
+        amountField.setValue(expense.getAmount());
+        taxField.setLabel("Location");
+        taxField.setValue(expense.getAddress());
     }
 
     private void setExpenseData(Expense expense) {
