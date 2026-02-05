@@ -21,10 +21,10 @@ public class Expense {
     @Column()
     private String name;
 
-    @Column(precision = 4, scale = 2)
+    @Column(precision = 10, scale = 2)
     private BigDecimal amount;
 
-    @Column(precision = 4, scale = 2)
+    @Column(precision = 10, scale = 2)
     private BigDecimal tax;
 
     @Column()

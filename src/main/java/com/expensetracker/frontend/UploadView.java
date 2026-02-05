@@ -2,6 +2,7 @@ package com.expensetracker.frontend;
 
 import com.expensetracker.model.Expense;
 import com.expensetracker.model.ReceiptResponse;
+import com.expensetracker.model.Validation;
 import com.expensetracker.service.*;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,13 +23,14 @@ import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.annotation.UIScope;
+import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Route("/add")
@@ -51,8 +53,14 @@ public class UploadView extends VerticalLayout {
     private final TextField categoryField;
     private final TextArea commentField;
 
+    private final TextField isAnomaly;
+    private final TextField anomalyReason;
+
     Expense expense = new Expense();
     ReceiptResponse receipt = new ReceiptResponse();
+    Validation validation = new Validation();
+
+    VerticalLayout validationLayout = new VerticalLayout();
 
     @Autowired
     private ExpenseService expenseService;
@@ -65,6 +73,8 @@ public class UploadView extends VerticalLayout {
     private final LocalAiExtractionService localService = new LocalAiExtractionService();
     private final AgenticRagService agenticRagService = new AgenticRagService();
 
+    VerticalLayout dataView = new VerticalLayout();
+
     public UploadView() {
 
         setSizeFull();
@@ -75,7 +85,7 @@ public class UploadView extends VerticalLayout {
                 .set("overflow", "hidden");
 
         H1 header = new H1("Add Expense");
-        header.getStyle().set("color", "#007bff").set("margin", "0 0 2rem 0");
+        header.getStyle().set("color", "#007bff").set("margin", "0 0 0 0");
 
         VerticalLayout formLayout = new VerticalLayout();
         formLayout.setWidth("40%");
@@ -84,12 +94,14 @@ public class UploadView extends VerticalLayout {
         formLayout.getStyle()
                 .set("background", "white")
                 .set("borderRadius", "12px")
-                .set("boxShadow", "0 2px 12px rgba(0,0,0,0.08)")
-                .set("margin", "2rem 2rem 2rem 0")
-                .set("padding", "2rem 4rem 0 4rem");
+                .set("boxShadow", "0 2px 12px rgba(0,0,0,0.08)");
+//                .set("margin", "2rem 2rem 2rem 0")
+//                .set("padding", "2rem 4rem 0 4rem");
 
         nameField = new TextField("Name");
         dateField = new DatePicker("Date");
+        HorizontalLayout firstRow = new HorizontalLayout();
+        firstRow.add(nameField, dateField);
         amountField = new TextField("Amount");
         taxField = new TextField("Tax");
         categoryField = new TextField("Category");
@@ -123,12 +135,19 @@ public class UploadView extends VerticalLayout {
                 return;
             }
 
-            //expenseService.saveExpense(expense);
-            getUI().ifPresent(ui -> ui.navigate("/"));
+            expenseService.saveExpense(expense);
+            getUI().ifPresent(ui -> ui.getPage().setLocation("/"));
             Notification.show("Expense submitted!", 2000, Notification.Position.TOP_CENTER);
         });
 
-        formLayout.add(header, nameField, dateField, amountField, taxField, categoryField, commentField, upload, uploadBtn);
+        dataView.add(firstRow, amountField, taxField, categoryField, commentField, upload);
+
+        isAnomaly = new TextField("Is Anomaly");
+        anomalyReason = new TextField("Anomaly Reason");
+        validationLayout.add(isAnomaly, anomalyReason);
+        validationLayout.setVisible(false);
+
+        formLayout.add(header, dataView, validationLayout, uploadBtn);
 
         VerticalLayout viewerLayout = new VerticalLayout();
         viewerLayout.setWidth("60%");
@@ -136,9 +155,9 @@ public class UploadView extends VerticalLayout {
         viewerLayout.setJustifyContentMode(JustifyContentMode.CENTER);
         viewerLayout.getStyle()
                 .set("background", "white")
-                .set("borderRadius", "12px")
+//                .set("borderRadius", "12px")
                 .set("boxShadow", "0 2px 12px rgba(0,0,0,0.08)")
-                .set("margin", "2rem 0 2rem 2rem");
+                .set("margin", "0 0 0 0");
 
         imagePreview = new Image();
         imagePreview.getStyle()
@@ -190,7 +209,24 @@ public class UploadView extends VerticalLayout {
                     setReceiptData(receipt);
                 } else {
 
-                    String extractedText = ocrService.extractText(tempFile.getAbsolutePath(), uuid, extension, expenseFileUploadPath);
+                    JSONObject jsonResult = agenticRagService.analyzeReceipt(fileName, bytes);
+                    System.out.println(jsonResult.toString(2));
+
+                    JSONObject extractedData = jsonResult.getJSONObject("structured_data");
+                    JSONObject validationData = jsonResult.getJSONObject("validation");
+
+                    ObjectMapper mapper = new ObjectMapper();
+                    mapper.registerModule(new JavaTimeModule());
+                    expense = mapper.readValue(extractedData.toString(), Expense.class);
+                    validation = mapper.readValue(validationData.toString(), Validation.class);
+
+                    setExpenseData(expense);
+                    setValidationData(validation);
+
+                    expense.setUser(userService.getUser(1L));
+                    expense.setFileName(uuid + "." + extension);
+
+                    /*String extractedText = ocrService.extractText(tempFile.getAbsolutePath(), uuid, extension, expenseFileUploadPath);
 
                     System.out.println("**********************************");
                     System.out.println(extractedText);
@@ -209,7 +245,7 @@ public class UploadView extends VerticalLayout {
                     setExpenseData(expense);
 
                     expense.setUser(userService.getUser(1L));
-                    expense.setFileName(uuid + "." + extension);
+                    expense.setFileName(uuid + "." + extension);*/
 
                 }
 
@@ -223,21 +259,55 @@ public class UploadView extends VerticalLayout {
         }
     }
 
+    private void setValidationData(Validation validation) {
+        setTextField(isAnomaly, String.valueOf(validation.isAnomaly()));
+        setTextField(anomalyReason, validation.getReason());
+        /*isAnomaly.setValue(String.valueOf(validation.isAnomaly()));
+        anomalyReason.setValue(validation.getReason());*/
+
+        validationLayout.setVisible(true);
+    }
+
     private void setReceiptData(ReceiptResponse expense) {
-        nameField.setValue(expense.getCompany());
+        setTextField(nameField, expense.getCompany());
+        setDateField(dateField, expense.getDate());
+        setTextField(amountField, String.valueOf(expense.getAmount()));
+        taxField.setLabel("Location");
+        setTextField(taxField, expense.getAddress());
+        /*nameField.setValue(expense.getCompany());
         dateField.setValue(expense.getDate());
         amountField.setValue(expense.getAmount());
         taxField.setLabel("Location");
-        taxField.setValue(expense.getAddress());
+        taxField.setValue(expense.getAddress());*/
     }
 
     private void setExpenseData(Expense expense) {
-        nameField.setValue(expense.getName());
+        setTextField(nameField, expense.getName());
+        setDateField(dateField, expense.getDate());
+        setTextField(amountField, String.valueOf(expense.getAmount()));
+        setTextField(taxField, String.valueOf(expense.getTax()));
+        setTextField(categoryField, expense.getCategory());
+        setTextArea(commentField, expense.getComment());
+
+        /*nameField.setValue(expense.getName());
         dateField.setValue(expense.getDate());
         amountField.setValue(String.valueOf(expense.getAmount()));
         taxField.setValue(String.valueOf(expense.getTax()));
         categoryField.setValue(expense.getCategory());
-        commentField.setValue(expense.getComment());
+        commentField.setValue(expense.getComment());*/
 
     }
+
+    private void setTextArea(TextArea commentField, String comment) {
+        commentField.setValue(comment != null ? comment : "");
+    }
+
+    private void setDateField(DatePicker dateField, LocalDate date) {
+        dateField.setValue(date != null ? date : LocalDate.now());
+    }
+
+    private void setTextField(TextField field, String value) {
+        field.setValue(value != null ? value : "");
+    }
+
 }

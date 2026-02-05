@@ -30,7 +30,7 @@ public class FlexibleDateDeserializer extends JsonDeserializer<LocalDate> {
             } catch (DateTimeParseException ignored) {}
         }
 
-        throw new IOException("Unrecognized date format: " + dateText);
+        return null;
     }
 }
 

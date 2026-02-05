@@ -42,7 +42,7 @@ public class HomeView extends AppLayout {
         tabs.setOrientation(Tabs.Orientation.VERTICAL);
         tabs.getStyle().set("background", "#f8f9fa").set("padding", "1rem").set("minWidth", "160px");
 
-        H1 title = new H1("Expense Tracker");
+        H1 title = new H1("Receipt Analyzer");
         title.getStyle().set("margin", "0").set("color", "#007bff");
         Button addExpenseButton = new Button("Add Expense", new Icon(VaadinIcon.PLUS), e -> getUI().ifPresent(ui -> ui.navigate("/add")));
         addExpenseButton.getStyle().set("background", "#007bff").set("color", "white");
@@ -50,7 +50,7 @@ public class HomeView extends AppLayout {
         topBar.setWidthFull();
         topBar.setHeight("64px");
         topBar.setJustifyContentMode(HorizontalLayout.JustifyContentMode.BETWEEN);
-        topBar.setAlignItems(Alignment.CENTER); // Vertically center
+        topBar.setAlignItems(Alignment.CENTER);
         topBar.setPadding(true);
         topBar.getStyle().set("background", "#91bafa").set("color", "white");
 
@@ -100,13 +100,13 @@ public class HomeView extends AppLayout {
                 .map(Expense::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        H1 totalExpenseLabel = new H1("Total Expense: $" + totalExpense);
+        H1 totalExpenseLabel = new H1("Total Expense: " + totalExpense);
         totalExpenseLabel.getStyle().set("color", "#007bff");
 
         Grid<Expense> expenseGrid = new Grid<>(Expense.class, false);
         expenseGrid.addColumn(Expense::getName).setHeader("Name").setAutoWidth(true);
-        expenseGrid.addColumn(Expense::getAmount).setHeader("Amount ($)").setAutoWidth(true);
-        expenseGrid.addColumn(Expense::getTax).setHeader("Tax ($)").setAutoWidth(true);
+        expenseGrid.addColumn(Expense::getAmount).setHeader("Amount").setAutoWidth(true);
+        expenseGrid.addColumn(Expense::getTax).setHeader("Tax").setAutoWidth(true);
         expenseGrid.addColumn(exp -> exp.getDate().toString()).setHeader("Date").setAutoWidth(true);
         expenseGrid.addColumn(Expense::getCategory).setHeader("Category").setAutoWidth(true);
         expenseGrid.addColumn(Expense::getComment).setHeader("Description").setAutoWidth(true);

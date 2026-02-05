@@ -19,14 +19,14 @@ public class AgenticRagService {
     private final OcrService ocrService = new OcrService();
     private static final String OCR_API = "http://localhost:5050/extract-image";
 
-    private static final String GEMINI_API_KEY = "AIzaSyAZs-uYlply2gk4kDCHVq4CARaKyooBdlg";
+    private static final String GEMINI_API_KEY = "AIzaSyAuBo_zAhWGI6_xuN1ttesz5bykdCzTCVk";
 
     public JSONObject analyzeReceipt(String fileName, byte[] fileBytes) throws IOException {
         AgentState state = new AgentState();
         state.addThought("Starting Agentic RAG-based receipt analysis...");
 
-        JSONObject ocrJson = callOCR(fileName, fileBytes);
-        String ocrText = ocrJson.optString("raw_text", "");
+//        JSONObject ocrJson = callOCR(fileName, fileBytes);
+        String ocrText = callOCR(fileName, fileBytes);
         state.addThought("Extracted OCR text, length: " + ocrText.length());
 
         String genAIJson = extractInvoiceDataUsingGenAI(ocrText);
@@ -46,7 +46,7 @@ public class AgenticRagService {
         return finalOutput;
     }
 
-    private JSONObject callOCR(String fileName, byte[] fileBytes) {
+    private String callOCR(String fileName, byte[] fileBytes) {
 
         String uuid = "1_" + UUID.randomUUID();
         int dotIndex = fileName.lastIndexOf('.');
@@ -63,9 +63,9 @@ public class AgenticRagService {
             throw new RuntimeException(e);
         }
 
-        String extractedText = ocrService.extractText(tempFile.getAbsolutePath(), uuid, extension, "/Users/tamilselvans/M.E/tamil/test-samples/");
+        return ocrService.extractText(tempFile.getAbsolutePath(), uuid, extension, "/Users/tamilselvans/M.E/tamil/test-samples/");
 
-        return new JSONObject(extractedText);
+//        return new JSONObject(extractedText);
     }
 
     private String extractInvoiceDataUsingGenAI(String ocrText) {
