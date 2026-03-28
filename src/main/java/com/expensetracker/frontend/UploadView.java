@@ -2,6 +2,7 @@ package com.expensetracker.frontend;
 
 import com.expensetracker.model.Expense;
 import com.expensetracker.model.ReceiptResponse;
+import com.expensetracker.model.User;
 import com.expensetracker.model.Validation;
 import com.expensetracker.service.*;
 import com.fasterxml.jackson.databind.MapperFeature;
@@ -30,6 +31,7 @@ import org.springframework.stereotype.Component;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -130,9 +132,16 @@ public class UploadView extends VerticalLayout {
         });
 
         uploadBtn.addClickListener(e -> {
+            syncExpenseFromFields();
             if (expense.getAmount() == null) {
                 Notification.show("Please enter the Expense Amount", 2000, Notification.Position.TOP_CENTER);
                 return;
+            }
+
+            if (expense.getUser() == null) {
+                User user = new User();
+                user.setId(1L);
+                expense.setUser(user);
             }
 
             expenseService.saveExpense(expense);
@@ -166,6 +175,7 @@ public class UploadView extends VerticalLayout {
                 .set("borderRadius", "8px");
 
         useExternalAICheckBox.setLabel("Use API");
+        useExternalAICheckBox.setValue(true);
 
         viewerLayout.add(imagePreview, upload, useExternalAICheckBox);
 
@@ -308,6 +318,30 @@ public class UploadView extends VerticalLayout {
 
     private void setTextField(TextField field, String value) {
         field.setValue(value != null ? value : "");
+    }
+
+    private void syncExpenseFromFields() {
+        if (expense == null) {
+            expense = new Expense();
+        }
+        expense.setName(nameField.getValue());
+        expense.setCategory(categoryField.getValue());
+        expense.setComment(commentField.getValue());
+        expense.setDate(dateField.getValue());
+
+        try {
+            String amt = amountField.getValue() != null ? amountField.getValue().trim() : "";
+            expense.setAmount(amt.isEmpty() ? null : new BigDecimal(amt));
+        } catch (Exception ignored) {
+            expense.setAmount(null);
+        }
+
+        try {
+            String tx = taxField.getValue() != null ? taxField.getValue().trim() : "";
+            expense.setTax(tx.isEmpty() ? null : new BigDecimal(tx));
+        } catch (Exception ignored) {
+            expense.setTax(null);
+        }
     }
 
 }
