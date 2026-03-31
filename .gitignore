@@ -31,3 +31,10 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### ML workspace ###
+ml/.venv*/
+ml/tmp/
+ml/training_data/
+__pycache__/
+*.pyc

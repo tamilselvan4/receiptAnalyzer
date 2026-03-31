@@ -4,30 +4,30 @@ import com.expensetracker.model.Expense;
 import com.expensetracker.service.ExpenseService;
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.grid.HeaderRow;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.textfield.TextField;
-import com.vaadin.flow.component.textfield.BigDecimalField;
-import com.vaadin.flow.component.datepicker.DatePicker;
-import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
+import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.tabs.Tab;
 import com.vaadin.flow.component.tabs.Tabs;
+import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.data.provider.ListDataProvider;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.annotation.UIScope;
-import com.vaadin.flow.data.provider.ListDataProvider;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.text.DecimalFormat;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.Month;
@@ -39,20 +39,26 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.text.DecimalFormat;
 
 @Route("")
 @UIScope
 @Component
 public class HomeView extends AppLayout {
 
-//    @Autowired
-    private final ExpenseService expenseService;
-    private YearMonth calendarMonth = YearMonth.now();
+    private static final long DEFAULT_USER_ID = 1L;
     private static final DecimalFormat AMOUNT_FORMAT = new DecimalFormat("0.00");
 
-    public HomeView(ExpenseService expenseService) {
+    private final ExpenseService expenseService;
 
+    private YearMonth calendarMonth = YearMonth.now();
+    private final List<Expense> homeExpenses = new ArrayList<>();
+    private ListDataProvider<Expense> homeDataProvider;
+    private H1 totalExpenseLabel;
+    private H1 calendarMonthTitle;
+    private Span calendarMonthTotal;
+    private Div calendarGridContainer;
+
+    public HomeView(ExpenseService expenseService) {
         this.expenseService = expenseService;
 
         Tab homeTab = new Tab(new Icon(VaadinIcon.HOME), new Paragraph("Home"));
@@ -61,24 +67,32 @@ public class HomeView extends AppLayout {
         Tab profileTab = new Tab(new Icon(VaadinIcon.USER), new Paragraph("Profile"));
         Tabs tabs = new Tabs(homeTab, calendarTab, reportTab, profileTab);
         tabs.setOrientation(Tabs.Orientation.VERTICAL);
-        tabs.getStyle().set("background", "#f8f9fa").set("padding", "1rem").set("minWidth", "160px");
+        tabs.getStyle()
+                .set("background", "#f8fafc")
+                .set("padding", "1rem")
+                .set("minWidth", "160px");
 
         H1 title = new H1("Receipt Analyzer");
-        title.getStyle().set("margin", "0").set("color", "#007bff");
-        Button addExpenseButton = new Button("Add Expense", new Icon(VaadinIcon.PLUS), e -> getUI().ifPresent(ui -> ui.navigate("/add")));
-        addExpenseButton.getStyle().set("background", "#007bff").set("color", "white");
+        title.getStyle().set("margin", "0").set("color", "#0f172a");
+        Button addExpenseButton = new Button("Add Expense", new Icon(VaadinIcon.PLUS), event -> getUI().ifPresent(ui -> ui.navigate("/add")));
+        addExpenseButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        addExpenseButton.getStyle().set("background", "#0f766e").set("color", "white");
+
         HorizontalLayout topBar = new HorizontalLayout(title, addExpenseButton);
         topBar.setWidthFull();
-        topBar.setHeight("64px");
+        topBar.setHeight("72px");
+        topBar.setAlignItems(FlexComponent.Alignment.CENTER);
         topBar.setJustifyContentMode(HorizontalLayout.JustifyContentMode.BETWEEN);
-        topBar.setAlignItems(Alignment.CENTER);
         topBar.setPadding(true);
-        topBar.getStyle().set("background", "#91bafa").set("color", "white");
+        topBar.getStyle()
+                .set("background", "linear-gradient(90deg, #dbeafe 0%, #e0f2fe 100%)")
+                .set("borderBottom", "1px solid #bfdbfe");
 
         VerticalLayout contentArea = new VerticalLayout();
         contentArea.setSizeFull();
         contentArea.setPadding(true);
         contentArea.setSpacing(true);
+        contentArea.getStyle().set("background", "#f8fbff");
         contentArea.add(getHomeTabContent());
 
         tabs.addSelectedChangeListener(event -> {
@@ -97,384 +111,462 @@ public class HomeView extends AppLayout {
 
         HorizontalLayout mainLayout = new HorizontalLayout(tabs, contentArea);
         mainLayout.setSizeFull();
-        mainLayout.setHeight("calc(100vh - 64px)"); // Fill viewport minus top bar
-        mainLayout.getStyle().set("overflow", "hidden"); // Prevent scrolling
+        mainLayout.expand(contentArea);
 
-        tabs.setHeightFull();
-        contentArea.setSizeFull();
-
-        VerticalLayout rootLayout = new VerticalLayout(topBar, mainLayout);
-        rootLayout.setSizeFull();
-        rootLayout.setPadding(false);
-        rootLayout.setSpacing(false);
-        rootLayout.getStyle().set("overflow", "hidden"); // Prevent scrolling
-        setContent(rootLayout);
+        VerticalLayout root = new VerticalLayout(topBar, mainLayout);
+        root.setSizeFull();
+        root.setPadding(false);
+        root.setSpacing(false);
+        setContent(root);
     }
 
     private VerticalLayout getHomeTabContent() {
-        VerticalLayout card = new VerticalLayout();
-        card.getStyle().set("background", "white").set("borderRadius", "8px").set("boxShadow", "0 2px 8px rgba(0,0,0,0.05)").set("padding", "2rem");
+        homeExpenses.clear();
+        homeExpenses.addAll(getExpenses());
+        homeDataProvider = new ListDataProvider<>(homeExpenses);
+
+        totalExpenseLabel = new H1();
+        totalExpenseLabel.getStyle().set("margin", "0").set("color", "#0f172a");
+        refreshTotalExpenseLabel();
+
+        Paragraph helper = new Paragraph("Seller, invoice, client, amount, date, and category stay in the main grid. Full invoice details open on double click.");
+        helper.getStyle().set("margin", "0").set("color", "#64748b");
+
+        Grid<Expense> grid = new Grid<>(Expense.class, false);
+        grid.setDataProvider(homeDataProvider);
+        grid.setWidthFull();
+        grid.setHeight("calc(100vh - 280px)");
+
+        grid.addColumn(expense -> safeText(expense.getName()))
+                .setHeader("Seller")
+                .setAutoWidth(true)
+                .setSortable(true);
+        grid.addColumn(expense -> safeText(expense.getInvoiceNumber()))
+                .setHeader("Invoice #")
+                .setAutoWidth(true)
+                .setSortable(true);
+        grid.addColumn(expense -> safeText(expense.getClientName()))
+                .setHeader("Client")
+                .setAutoWidth(true)
+                .setSortable(true);
+        grid.addColumn(expense -> formatAmount(expense.getAmount()))
+                .setHeader("Amount")
+                .setAutoWidth(true)
+                .setSortable(true);
+        grid.addColumn(expense -> expense.getDate() != null ? expense.getDate().toString() : "-")
+                .setHeader("Date")
+                .setAutoWidth(true)
+                .setSortable(true);
+        grid.addColumn(expense -> safeText(expense.getCategory()))
+                .setHeader("Category")
+                .setAutoWidth(true)
+                .setSortable(true);
+
+        TextField sellerFilter = createFilterField("Seller");
+        TextField invoiceFilter = createFilterField("Invoice #");
+        TextField clientFilter = createFilterField("Client");
+        DatePicker dateFilter = new DatePicker("Date");
+        dateFilter.setWidth("180px");
+        TextField categoryFilter = createFilterField("Category");
+
+        sellerFilter.addValueChangeListener(event -> applyFilters(sellerFilter, invoiceFilter, clientFilter, dateFilter, categoryFilter));
+        invoiceFilter.addValueChangeListener(event -> applyFilters(sellerFilter, invoiceFilter, clientFilter, dateFilter, categoryFilter));
+        clientFilter.addValueChangeListener(event -> applyFilters(sellerFilter, invoiceFilter, clientFilter, dateFilter, categoryFilter));
+        dateFilter.addValueChangeListener(event -> applyFilters(sellerFilter, invoiceFilter, clientFilter, dateFilter, categoryFilter));
+        categoryFilter.addValueChangeListener(event -> applyFilters(sellerFilter, invoiceFilter, clientFilter, dateFilter, categoryFilter));
+
+        HorizontalLayout filterRow = new HorizontalLayout(sellerFilter, invoiceFilter, clientFilter, dateFilter, categoryFilter);
+        filterRow.setWidthFull();
+        filterRow.setSpacing(true);
+        filterRow.getStyle().set("flexWrap", "wrap");
+
+        grid.addItemDoubleClickListener(event -> openExpenseEditor(event.getItem()));
+
+        VerticalLayout card = new VerticalLayout(totalExpenseLabel, helper, filterRow, grid);
         card.setWidthFull();
-        card.setHeightFull();
-
-        List<Expense> expenses = getExpenses();
-        BigDecimal totalExpense = expenses.stream()
-                .map(Expense::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        H1 totalExpenseLabel = new H1("Total Expense: " + formatAmount(totalExpense));
-        totalExpenseLabel.getStyle().set("color", "#007bff");
-
-        Grid<Expense> expenseGrid = new Grid<>(Expense.class, false);
-        Grid.Column<Expense> nameCol = expenseGrid.addColumn(exp -> safeText(exp.getName()))
-                .setHeader("Name").setAutoWidth(true).setSortable(true);
-        Grid.Column<Expense> amountCol = expenseGrid.addColumn(exp -> formatAmount(exp.getAmount()))
-                .setHeader("Amount").setAutoWidth(true).setSortable(true);
-        Grid.Column<Expense> taxCol = expenseGrid.addColumn(exp -> formatAmount(exp.getTax()))
-                .setHeader("Tax").setAutoWidth(true).setSortable(true);
-        Grid.Column<Expense> dateCol = expenseGrid.addColumn(exp -> exp.getDate() != null ? exp.getDate().toString() : "-")
-                .setHeader("Date").setAutoWidth(true).setSortable(true);
-        Grid.Column<Expense> categoryCol = expenseGrid.addColumn(exp -> safeText(exp.getCategory()))
-                .setHeader("Category").setAutoWidth(true).setSortable(true);
-        Grid.Column<Expense> commentCol = expenseGrid.addColumn(exp -> safeText(exp.getComment()))
-                .setHeader("Description").setAutoWidth(true);
-
-        amountCol.setComparator((a, b) -> compareBigDecimal(a.getAmount(), b.getAmount()));
-        taxCol.setComparator((a, b) -> compareBigDecimal(a.getTax(), b.getTax()));
-        dateCol.setComparator((a, b) -> compareLocalDate(a.getDate(), b.getDate()));
-
-        ListDataProvider<Expense> dataProvider = new ListDataProvider<>(expenses);
-        expenseGrid.setDataProvider(dataProvider);
-
-        HeaderRow filterRow = expenseGrid.appendHeaderRow();
-        TextField nameFilter = new TextField();
-        nameFilter.setPlaceholder("Filter");
-        nameFilter.setClearButtonVisible(true);
-        nameFilter.setWidthFull();
-        filterRow.getCell(nameCol).setComponent(nameFilter);
-
-        TextField categoryFilter = new TextField();
-        categoryFilter.setPlaceholder("Filter");
-        categoryFilter.setClearButtonVisible(true);
-        categoryFilter.setWidthFull();
-        filterRow.getCell(categoryCol).setComponent(categoryFilter);
-
-        DatePicker dateFilter = new DatePicker();
-        dateFilter.setPlaceholder("Date");
-        dateFilter.setClearButtonVisible(true);
-        dateFilter.setWidthFull();
-        filterRow.getCell(dateCol).setComponent(dateFilter);
-
-        nameFilter.addValueChangeListener(e -> applyFilters(dataProvider, nameFilter, categoryFilter, dateFilter));
-        categoryFilter.addValueChangeListener(e -> applyFilters(dataProvider, nameFilter, categoryFilter, dateFilter));
-        dateFilter.addValueChangeListener(e -> applyFilters(dataProvider, nameFilter, categoryFilter, dateFilter));
-
-        expenseGrid.addItemDoubleClickListener(e -> openEditDialog(e.getItem(), dataProvider));
-        expenseGrid.setWidthFull();
-        expenseGrid.setHeightFull();
-
-        // Make grid scrollable only, with fixed height
-        Div gridContainer = new Div(expenseGrid);
-        gridContainer.setWidthFull();
-        gridContainer.setHeightFull();
-        gridContainer.getStyle().set("overflow", "hidden").set("background", "#f8f9fa");
-
-        card.setHeightFull();
-        card.add(totalExpenseLabel, gridContainer);
-        card.setFlexGrow(1, gridContainer);
-
+        card.setPadding(true);
+        card.setSpacing(true);
+        card.getStyle()
+                .set("background", "white")
+                .set("borderRadius", "24px")
+                .set("boxShadow", "0 18px 45px rgba(15, 23, 42, 0.08)");
         return card;
     }
 
     private VerticalLayout getCalendarContent() {
-        VerticalLayout card = new VerticalLayout();
-        card.getStyle().set("background", "white").set("borderRadius", "8px").set("boxShadow", "0 2px 8px rgba(0,0,0,0.05)").set("padding", "2rem");
-        card.setHeightFull();
+        calendarMonthTitle = new H1();
+        calendarMonthTitle.getStyle().set("margin", "0").set("color", "#0f172a");
 
-        H1 monthTitle = new H1();
-        monthTitle.getStyle().set("color", "#007bff").set("margin", "0");
-
-        Span monthTotal = new Span();
-        monthTotal.getStyle()
+        calendarMonthTotal = new Span();
+        calendarMonthTotal.getStyle()
                 .set("fontSize", "0.9rem")
-                .set("fontWeight", "600")
-                .set("color", "#0f5132")
-                .set("background", "#e7f5ec")
-                .set("padding", "4px 10px")
-                .set("borderRadius", "8px");
+                .set("fontWeight", "700")
+                .set("color", "#0f766e")
+                .set("background", "#ccfbf1")
+                .set("padding", "6px 12px")
+                .set("borderRadius", "999px");
 
-        Button prevBtn = new Button("Prev", new Icon(VaadinIcon.ANGLE_LEFT));
-        Button nextBtn = new Button("Next", new Icon(VaadinIcon.ANGLE_RIGHT));
-        prevBtn.getStyle().set("background", "#f8f9fa");
-        nextBtn.getStyle().set("background", "#f8f9fa");
+        Button prevButton = new Button("Prev", new Icon(VaadinIcon.ANGLE_LEFT));
+        Button nextButton = new Button("Next", new Icon(VaadinIcon.ANGLE_RIGHT));
+        prevButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        nextButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
 
         ComboBox<Month> monthSelect = new ComboBox<>();
         monthSelect.setItems(Month.values());
-        monthSelect.setItemLabelGenerator(m -> m.getDisplayName(TextStyle.FULL, Locale.ENGLISH));
+        monthSelect.setItemLabelGenerator(month -> month.getDisplayName(TextStyle.FULL, Locale.ENGLISH));
         monthSelect.setValue(calendarMonth.getMonth());
-        monthSelect.setWidth("170px");
+        monthSelect.setWidth("180px");
 
-        int currentYear = YearMonth.now().getYear();
         ComboBox<Integer> yearSelect = new ComboBox<>();
         List<Integer> years = new ArrayList<>();
-        for (int y = currentYear - 5; y <= currentYear + 5; y++) {
-            years.add(y);
+        int currentYear = YearMonth.now().getYear();
+        for (int year = currentYear - 5; year <= currentYear + 5; year++) {
+            years.add(year);
         }
         yearSelect.setItems(years);
         yearSelect.setValue(calendarMonth.getYear());
-        yearSelect.setWidth("110px");
+        yearSelect.setWidth("120px");
 
-        VerticalLayout titleBlock = new VerticalLayout(monthTitle, monthTotal);
-        titleBlock.setSpacing(false);
-        titleBlock.setPadding(false);
+        VerticalLayout heading = new VerticalLayout(calendarMonthTitle, calendarMonthTotal);
+        heading.setPadding(false);
+        heading.setSpacing(false);
 
-        HorizontalLayout nav = new HorizontalLayout(titleBlock, monthSelect, yearSelect, prevBtn, nextBtn);
-        nav.setAlignItems(Alignment.CENTER);
-        nav.setWidthFull();
-        nav.expand(titleBlock);
+        HorizontalLayout navigation = new HorizontalLayout(heading, monthSelect, yearSelect, prevButton, nextButton);
+        navigation.setWidthFull();
+        navigation.setAlignItems(FlexComponent.Alignment.CENTER);
+        navigation.expand(heading);
 
-        Div gridContainer = new Div();
-        gridContainer.setWidthFull();
-        gridContainer.getStyle()
-                .set("overflow", "hidden")
-                .set("paddingBottom", "4px")
-                .set("height", "calc(100vh - 64px - 210px)");
+        calendarGridContainer = new Div();
+        calendarGridContainer.setWidthFull();
+        calendarGridContainer.getStyle().set("height", "calc(100vh - 270px)");
 
-        renderCalendar(calendarMonth, monthTitle, monthTotal, gridContainer, getExpenses());
-
-        prevBtn.addClickListener(e -> {
+        prevButton.addClickListener(event -> {
             calendarMonth = calendarMonth.minusMonths(1);
             monthSelect.setValue(calendarMonth.getMonth());
             yearSelect.setValue(calendarMonth.getYear());
-            renderCalendar(calendarMonth, monthTitle, monthTotal, gridContainer, getExpenses());
+            refreshCalendar();
         });
-        nextBtn.addClickListener(e -> {
+        nextButton.addClickListener(event -> {
             calendarMonth = calendarMonth.plusMonths(1);
             monthSelect.setValue(calendarMonth.getMonth());
             yearSelect.setValue(calendarMonth.getYear());
-            renderCalendar(calendarMonth, monthTitle, monthTotal, gridContainer, getExpenses());
+            refreshCalendar();
         });
-
-        monthSelect.addValueChangeListener(e -> {
-            Month selected = e.getValue();
-            if (selected == null) {
-                return;
+        monthSelect.addValueChangeListener(event -> {
+            if (event.getValue() != null) {
+                calendarMonth = YearMonth.of(calendarMonth.getYear(), event.getValue());
+                refreshCalendar();
             }
-            calendarMonth = YearMonth.of(calendarMonth.getYear(), selected);
-            renderCalendar(calendarMonth, monthTitle, monthTotal, gridContainer, getExpenses());
         });
-
-        yearSelect.addValueChangeListener(e -> {
-            Integer selected = e.getValue();
-            if (selected == null) {
-                return;
+        yearSelect.addValueChangeListener(event -> {
+            if (event.getValue() != null) {
+                calendarMonth = YearMonth.of(event.getValue(), calendarMonth.getMonth());
+                refreshCalendar();
             }
-            calendarMonth = YearMonth.of(selected, calendarMonth.getMonth());
-            renderCalendar(calendarMonth, monthTitle, monthTotal, gridContainer, getExpenses());
         });
 
-        card.add(nav, gridContainer);
+        refreshCalendar();
+
+        VerticalLayout card = new VerticalLayout(navigation, calendarGridContainer);
+        card.setWidthFull();
+        card.setHeightFull();
+        card.setPadding(true);
+        card.setSpacing(true);
+        card.getStyle()
+                .set("background", "white")
+                .set("borderRadius", "24px")
+                .set("boxShadow", "0 18px 45px rgba(15, 23, 42, 0.08)");
         return card;
     }
 
     private VerticalLayout getReportTabContent() {
-        VerticalLayout card = new VerticalLayout(new Paragraph("Report data goes here"));
-        card.getStyle().set("background", "white").set("borderRadius", "8px").set("boxShadow", "0 2px 8px rgba(0,0,0,0.05)").set("padding", "2rem");
+        VerticalLayout card = new VerticalLayout(new Paragraph("Report view is unchanged in this iteration."));
+        card.setWidthFull();
         card.setHeightFull();
+        card.getStyle()
+                .set("background", "white")
+                .set("borderRadius", "24px")
+                .set("boxShadow", "0 18px 45px rgba(15, 23, 42, 0.08)")
+                .set("padding", "24px");
         return card;
     }
 
     private VerticalLayout getProfileTabContent() {
-        VerticalLayout card = new VerticalLayout(new Paragraph("Profile data goes here"));
-        card.getStyle().set("background", "white").set("borderRadius", "8px").set("boxShadow", "0 2px 8px rgba(0,0,0,0.05)").set("padding", "2rem");
+        VerticalLayout card = new VerticalLayout(new Paragraph("Profile view is unchanged in this iteration."));
+        card.setWidthFull();
         card.setHeightFull();
+        card.getStyle()
+                .set("background", "white")
+                .set("borderRadius", "24px")
+                .set("boxShadow", "0 18px 45px rgba(15, 23, 42, 0.08)")
+                .set("padding", "24px");
         return card;
     }
 
-    private List<Expense> getExpenses() {
-        return expenseService.getExpenseByUserId(1L);
-//        return List.of(
-                /*new Expense(
-                        "Groceries",
-                        new BigDecimal("5.00"),
-                        new BigDecimal("0.50"),
-                        "INR",
-                        LocalDate.of(2024, 6, 10),
-                        "Food",
-                        "Weekly shopping"
-                ),
-                new Expense(
-                        "Internet Bill",
-                        new BigDecimal("75.0"),
-                        new BigDecimal("7.5"),
-                        "INR",
-                        LocalDate.of(2024, 6, 15),
-                        "Utilities",
-                        "Monthly payment"
-                ),
-                new Expense(
-                        "Electricity Bill",
-                        new BigDecimal("120.0"),
-                        new BigDecimal("12.0"),
-                        "INR",
-                        LocalDate.of(2024, 6, 20),
-                        "Utilities",
-                        "June electricity payment"
-                )*/
-//        );
+    private TextField createFilterField(String label) {
+        TextField field = new TextField(label);
+        field.setClearButtonVisible(true);
+        field.setWidth("200px");
+        return field;
     }
 
-    private Div buildCalendarGrid(YearMonth month, Map<LocalDate, List<Expense>> byDate, Map<LocalDate, BigDecimal> totals) {
+    private void applyFilters(TextField sellerFilter,
+                              TextField invoiceFilter,
+                              TextField clientFilter,
+                              DatePicker dateFilter,
+                              TextField categoryFilter) {
+        if (homeDataProvider == null) {
+            return;
+        }
+
+        String sellerValue = normalizedFilter(sellerFilter.getValue());
+        String invoiceValue = normalizedFilter(invoiceFilter.getValue());
+        String clientValue = normalizedFilter(clientFilter.getValue());
+        String categoryValue = normalizedFilter(categoryFilter.getValue());
+        LocalDate dateValue = dateFilter.getValue();
+
+        homeDataProvider.setFilter(expense -> {
+            boolean sellerMatch = sellerValue.isEmpty() || safeLower(expense.getName()).contains(sellerValue);
+            boolean invoiceMatch = invoiceValue.isEmpty() || safeLower(expense.getInvoiceNumber()).contains(invoiceValue);
+            boolean clientMatch = clientValue.isEmpty() || safeLower(expense.getClientName()).contains(clientValue);
+            boolean categoryMatch = categoryValue.isEmpty() || safeLower(expense.getCategory()).contains(categoryValue);
+            boolean dateMatch = dateValue == null || (expense.getDate() != null && expense.getDate().equals(dateValue));
+            return sellerMatch && invoiceMatch && clientMatch && categoryMatch && dateMatch;
+        });
+    }
+
+    private void openExpenseEditor(Expense summaryExpense) {
+        Expense detailedExpense = summaryExpense.getId() == null
+                ? summaryExpense
+                : expenseService.getExpenseWithLineItems(summaryExpense.getId(), DEFAULT_USER_ID).orElse(summaryExpense);
+
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Invoice Details");
+        dialog.setWidth("1100px");
+        dialog.setMaxWidth("95vw");
+        dialog.setHeight("90vh");
+
+        InvoiceEditorForm editorForm = new InvoiceEditorForm();
+        editorForm.setExpense(detailedExpense);
+        editorForm.setValidation(null);
+
+        Button saveButton = new Button("Save Changes", new Icon(VaadinIcon.CHECK));
+        saveButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        saveButton.getStyle().set("background", "#0f766e").set("color", "white");
+        saveButton.addClickListener(event -> {
+            editorForm.writeToExpense(detailedExpense);
+            Expense saved = expenseService.saveExpense(detailedExpense);
+            replaceExpenseInCollections(saved);
+            refreshTotalExpenseLabel();
+            refreshCalendar();
+            dialog.close();
+        });
+
+        Button closeButton = new Button("Close", event -> dialog.close());
+
+        HorizontalLayout actions = new HorizontalLayout(saveButton, closeButton);
+        actions.setWidthFull();
+        actions.setJustifyContentMode(HorizontalLayout.JustifyContentMode.END);
+
+        VerticalLayout content = new VerticalLayout(editorForm, actions);
+        content.setSizeFull();
+        content.setPadding(false);
+        content.setSpacing(true);
+
+        dialog.add(content);
+        dialog.open();
+    }
+
+    private void refreshCalendar() {
+        if (calendarGridContainer == null || calendarMonthTitle == null || calendarMonthTotal == null) {
+            return;
+        }
+        List<Expense> expenses = getExpenses();
+        calendarMonthTitle.setText(calendarMonth.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " " + calendarMonth.getYear());
+        calendarMonthTotal.setText("Month Total: " + formatAmount(getMonthlyTotal(calendarMonth, expenses)));
+        calendarGridContainer.removeAll();
+        calendarGridContainer.add(buildCalendarGrid(calendarMonth, groupExpensesByDate(expenses), sumByDate(groupExpensesByDate(expenses))));
+    }
+
+    private Div buildCalendarGrid(YearMonth month, Map<LocalDate, List<Expense>> groupedExpenses, Map<LocalDate, BigDecimal> totals) {
         Div wrapper = new Div();
         wrapper.getStyle()
                 .set("display", "flex")
                 .set("flexDirection", "column")
-                .set("gap", "6px")
+                .set("gap", "8px")
                 .set("height", "100%");
 
         Div headerRow = new Div();
         headerRow.getStyle()
                 .set("display", "grid")
                 .set("gridTemplateColumns", "repeat(7, 1fr)")
-                .set("gap", "8px")
-                .set("width", "100%");
+                .set("gap", "8px");
 
-        for (DayOfWeek day : DayOfWeek.values()) {
-            Span header = new Span(day.getDisplayName(TextStyle.SHORT, Locale.ENGLISH));
-            header.getStyle().set("fontWeight", "600").set("color", "#6c757d");
-            Div headerCell = new Div(header);
-            headerCell.getStyle().set("padding", "0 8px");
-            headerRow.add(headerCell);
+        for (DayOfWeek dayOfWeek : DayOfWeek.values()) {
+            Span label = new Span(dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ENGLISH));
+            label.getStyle().set("fontWeight", "700").set("color", "#64748b");
+            Div cell = new Div(label);
+            cell.getStyle().set("padding", "0 6px");
+            headerRow.add(cell);
         }
 
         Div grid = new Div();
-        int weeks = calculateWeeksInMonth(month);
         grid.getStyle()
                 .set("display", "grid")
                 .set("gridTemplateColumns", "repeat(7, 1fr)")
-                .set("gridTemplateRows", "repeat(" + weeks + ", minmax(90px, 1fr))")
+                .set("gridTemplateRows", "repeat(" + calculateWeeksInMonth(month) + ", minmax(100px, 1fr))")
                 .set("gap", "8px")
-                .set("alignItems", "stretch")
-                .set("width", "100%")
                 .set("height", "100%");
 
         LocalDate firstOfMonth = month.atDay(1);
-        int firstDayIndex = firstOfMonth.getDayOfWeek().getValue(); // 1=Mon .. 7=Sun
-
-        for (int i = 1; i < firstDayIndex; i++) {
+        int firstDayIndex = firstOfMonth.getDayOfWeek().getValue();
+        for (int index = 1; index < firstDayIndex; index++) {
             Div blank = new Div();
-            blank.getStyle()
-                    .set("minHeight", "90px")
-                    .set("height", "100%")
-                    .set("border", "1px solid transparent")
-                    .set("boxSizing", "border-box");
+            blank.getStyle().set("border", "1px solid transparent");
             grid.add(blank);
         }
 
-        int daysInMonth = month.lengthOfMonth();
-        for (int day = 1; day <= daysInMonth; day++) {
+        for (int day = 1; day <= month.lengthOfMonth(); day++) {
             LocalDate date = month.atDay(day);
+            List<Expense> expenses = groupedExpenses.getOrDefault(date, List.of());
             BigDecimal total = totals.getOrDefault(date, BigDecimal.ZERO);
-            List<Expense> items = byDate.getOrDefault(date, List.of());
-            grid.add(buildDateCell(date, total, items));
+            grid.add(buildDateCell(date, total, expenses));
         }
 
         wrapper.add(headerRow, grid);
         return wrapper;
     }
 
-    private void renderCalendar(YearMonth month, H1 title, Span monthTotal, Div container, List<Expense> expenses) {
-        title.setText(month.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " " + month.getYear());
-        monthTotal.setText("Month Total: ₹ " + formatAmount(getMonthlyTotal(month, expenses)));
-        Map<LocalDate, List<Expense>> byDate = groupExpensesByDate(expenses);
-        Map<LocalDate, BigDecimal> totals = sumByDate(byDate);
-        container.removeAll();
-        container.add(buildCalendarGrid(month, byDate, totals));
-    }
-
-    private BigDecimal getMonthlyTotal(YearMonth month, List<Expense> expenses) {
-        return expenses.stream()
-                .filter(e -> e.getDate() != null)
-                .filter(e -> YearMonth.from(e.getDate()).equals(month))
-                .map(Expense::getAmount)
-                .filter(a -> a != null)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private Div buildDateCell(LocalDate date, BigDecimal total, List<Expense> items) {
+    private Div buildDateCell(LocalDate date, BigDecimal total, List<Expense> expenses) {
         Span dateLabel = new Span(String.valueOf(date.getDayOfMonth()));
-        dateLabel.getStyle().set("fontWeight", "600").set("color", "#343a40");
+        dateLabel.getStyle().set("fontWeight", "700").set("color", "#0f172a");
 
-        Span amountLabel = new Span("Total");
-        amountLabel.getStyle().set("fontSize", "0.7rem").set("color", "#6c757d");
+        Span totalLabel = new Span(formatAmount(total));
+        totalLabel.getStyle()
+                .set("fontWeight", "700")
+                .set("color", "#0f766e")
+                .set("background", "#ccfbf1")
+                .set("padding", "4px 8px")
+                .set("borderRadius", "999px");
 
-        Span amountValue = new Span("₹ " + formatAmount(total));
-        amountValue.getStyle()
-                .set("fontSize", "0.9rem")
-                .set("fontWeight", "600")
-                .set("color", "#198754")
-                .set("background", "#e7f5ec")
-                .set("padding", "2px 6px")
-                .set("borderRadius", "6px")
-                .set("display", "inline-block");
+        Span countLabel = new Span(expenses.isEmpty() ? "No invoices" : expenses.size() + " invoice(s)");
+        countLabel.getStyle().set("fontSize", "0.8rem").set("color", "#64748b");
 
-        Div cell = new Div(dateLabel, amountLabel, amountValue);
+        Div cell = new Div(dateLabel, totalLabel, countLabel);
         cell.getStyle()
-                .set("border", "1px solid #e9ecef")
-                .set("borderRadius", "8px")
-                .set("padding", "8px")
-                .set("minHeight", "90px")
-                .set("height", "100%")
-                .set("width", "100%")
-                .set("boxSizing", "border-box")
+                .set("border", "1px solid #dbeafe")
+                .set("borderRadius", "18px")
+                .set("padding", "12px")
+                .set("background", expenses.isEmpty() ? "#f8fafc" : "white")
+                .set("cursor", expenses.isEmpty() ? "default" : "pointer")
                 .set("display", "flex")
                 .set("flexDirection", "column")
-                .set("gap", "6px")
-                .set("background", items.isEmpty() ? "#f8f9fa" : "#ffffff")
-                .set("cursor", items.isEmpty() ? "default" : "pointer");
+                .set("gap", "8px");
 
-        if (!items.isEmpty()) {
-            cell.addClickListener(e -> openExpenseDialog(date, items));
+        if (!expenses.isEmpty()) {
+            cell.addClickListener(event -> openDayExpensesDialog(date, expenses));
         }
-
         return cell;
     }
 
-    private void openExpenseDialog(LocalDate date, List<Expense> items) {
+    private void openDayExpensesDialog(LocalDate date, List<Expense> expenses) {
         Dialog dialog = new Dialog();
-        dialog.setHeaderTitle("Expenses on " + date);
+        dialog.setHeaderTitle("Invoices on " + date);
+        dialog.setWidth("760px");
 
         VerticalLayout list = new VerticalLayout();
         list.setPadding(false);
         list.setSpacing(true);
 
-        items.stream()
+        expenses.stream()
                 .sorted(Comparator.comparing(Expense::getName, Comparator.nullsLast(String::compareToIgnoreCase)))
-                .forEach(exp -> {
-                    String name = exp.getName() != null ? exp.getName() : "Expense";
-                    String amount = formatAmount(exp.getAmount());
-                    String category = exp.getCategory() != null ? exp.getCategory() : "-";
+                .forEach(expense -> {
+                    Span seller = new Span(safeText(expense.getName()));
+                    seller.getStyle().set("fontWeight", "700").set("color", "#0f172a");
+                    Span details = new Span(
+                            "Invoice " + safeText(expense.getInvoiceNumber())
+                                    + " | Client " + safeText(expense.getClientName())
+                                    + " | " + formatAmount(expense.getAmount())
+                                    + " | " + safeText(expense.getCategory())
+                    );
+                    details.getStyle().set("fontSize", "0.9rem").set("color", "#64748b");
 
-                    Span row = new Span(name + " • ₹ " + amount + " • " + category);
-                    row.getStyle().set("color", "#495057");
+                    VerticalLayout summary = new VerticalLayout(seller, details);
+                    summary.setPadding(false);
+                    summary.setSpacing(false);
+
+                    Button openButton = new Button("Open", new Icon(VaadinIcon.EXTERNAL_LINK));
+                    openButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
+                    openButton.addClickListener(event -> {
+                        dialog.close();
+                        openExpenseEditor(expense);
+                    });
+
+                    HorizontalLayout row = new HorizontalLayout(summary, openButton);
+                    row.setWidthFull();
+                    row.setAlignItems(FlexComponent.Alignment.CENTER);
+                    row.setJustifyContentMode(HorizontalLayout.JustifyContentMode.BETWEEN);
+                    row.getStyle()
+                            .set("padding", "12px 0")
+                            .set("borderBottom", "1px solid #e2e8f0");
                     list.add(row);
                 });
 
         dialog.add(list);
-        dialog.setWidth("420px");
         dialog.open();
     }
 
+    private void replaceExpenseInCollections(Expense savedExpense) {
+        boolean replaced = false;
+        for (int index = 0; index < homeExpenses.size(); index++) {
+            Expense current = homeExpenses.get(index);
+            if (current.getId() != null && current.getId().equals(savedExpense.getId())) {
+                homeExpenses.set(index, savedExpense);
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) {
+            homeExpenses.add(savedExpense);
+        }
+        if (homeDataProvider != null) {
+            homeDataProvider.refreshAll();
+        }
+    }
+
+    private void refreshTotalExpenseLabel() {
+        if (totalExpenseLabel == null) {
+            return;
+        }
+        BigDecimal totalExpense = homeExpenses.stream()
+                .map(Expense::getAmount)
+                .filter(amount -> amount != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        totalExpenseLabel.setText("Total Expense: " + formatAmount(totalExpense));
+    }
+
+    private List<Expense> getExpenses() {
+        return expenseService.getExpenseByUserId(DEFAULT_USER_ID);
+    }
+
+    private BigDecimal getMonthlyTotal(YearMonth month, List<Expense> expenses) {
+        return expenses.stream()
+                .filter(expense -> expense.getDate() != null)
+                .filter(expense -> YearMonth.from(expense.getDate()).equals(month))
+                .map(Expense::getAmount)
+                .filter(amount -> amount != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     private Map<LocalDate, List<Expense>> groupExpensesByDate(List<Expense> expenses) {
-        Map<LocalDate, List<Expense>> map = new HashMap<>();
+        Map<LocalDate, List<Expense>> grouped = new HashMap<>();
         for (Expense expense : expenses) {
-            LocalDate date = expense.getDate();
-            if (date == null) {
+            if (expense.getDate() == null) {
                 continue;
             }
-            map.computeIfAbsent(date, k -> new ArrayList<>()).add(expense);
+            grouped.computeIfAbsent(expense.getDate(), key -> new ArrayList<>()).add(expense);
         }
-        return map;
+        return grouped;
     }
 
     private Map<LocalDate, BigDecimal> sumByDate(Map<LocalDate, List<Expense>> grouped) {
@@ -482,7 +574,7 @@ public class HomeView extends AppLayout {
         for (Map.Entry<LocalDate, List<Expense>> entry : grouped.entrySet()) {
             BigDecimal total = entry.getValue().stream()
                     .map(Expense::getAmount)
-                    .filter(a -> a != null)
+                    .filter(amount -> amount != null)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             totals.put(entry.getKey(), total);
         }
@@ -491,114 +583,24 @@ public class HomeView extends AppLayout {
 
     private int calculateWeeksInMonth(YearMonth month) {
         LocalDate firstOfMonth = month.atDay(1);
-        int firstDayIndex = firstOfMonth.getDayOfWeek().getValue(); // 1=Mon .. 7=Sun
-        int daysInMonth = month.lengthOfMonth();
-        int slots = (firstDayIndex - 1) + daysInMonth;
-        return (int) Math.ceil(slots / 7.0);
+        int firstDayIndex = firstOfMonth.getDayOfWeek().getValue();
+        int totalSlots = (firstDayIndex - 1) + month.lengthOfMonth();
+        return (int) Math.ceil(totalSlots / 7.0);
     }
 
-    private void applyFilters(ListDataProvider<Expense> dataProvider, TextField nameFilter, TextField categoryFilter, DatePicker dateFilter) {
-        String nameValue = nameFilter.getValue() != null ? nameFilter.getValue().trim().toLowerCase() : "";
-        String categoryValue = categoryFilter.getValue() != null ? categoryFilter.getValue().trim().toLowerCase() : "";
-        LocalDate dateValue = dateFilter.getValue();
-
-        dataProvider.setFilter(expense -> {
-            String name = expense.getName() != null ? expense.getName().toLowerCase() : "";
-            String category = expense.getCategory() != null ? expense.getCategory().toLowerCase() : "";
-            LocalDate date = expense.getDate();
-
-            boolean nameMatch = nameValue.isEmpty() || name.contains(nameValue);
-            boolean categoryMatch = categoryValue.isEmpty() || category.contains(categoryValue);
-            boolean dateMatch = dateValue == null || (date != null && date.equals(dateValue));
-
-            return nameMatch && categoryMatch && dateMatch;
-        });
-    }
-
-    private void openEditDialog(Expense expense, ListDataProvider<Expense> dataProvider) {
-        Dialog dialog = new Dialog();
-        dialog.setHeaderTitle("Edit Expense");
-
-        TextField nameField = new TextField("Name");
-        BigDecimalField amountField = new BigDecimalField("Amount");
-        BigDecimalField taxField = new BigDecimalField("Tax");
-        DatePicker dateField = new DatePicker("Date");
-        TextField categoryField = new TextField("Category");
-        TextField commentField = new TextField("Description");
-
-        nameField.setValue(expense.getName() != null ? expense.getName() : "");
-        amountField.setValue(expense.getAmount());
-        taxField.setValue(expense.getTax());
-        dateField.setValue(expense.getDate());
-        categoryField.setValue(expense.getCategory() != null ? expense.getCategory() : "");
-        commentField.setValue(expense.getComment() != null ? expense.getComment() : "");
-
-        Button save = new Button("Save");
-        Button cancel = new Button("Cancel");
-        save.setEnabled(false);
-
-        Runnable markDirty = () -> save.setEnabled(true);
-        nameField.addValueChangeListener(e -> markDirty.run());
-        amountField.addValueChangeListener(e -> markDirty.run());
-        taxField.addValueChangeListener(e -> markDirty.run());
-        dateField.addValueChangeListener(e -> markDirty.run());
-        categoryField.addValueChangeListener(e -> markDirty.run());
-        commentField.addValueChangeListener(e -> markDirty.run());
-
-        save.addClickListener(e -> {
-            expense.setName(nameField.getValue());
-            expense.setAmount(amountField.getValue());
-            expense.setTax(taxField.getValue());
-            expense.setDate(dateField.getValue());
-            expense.setCategory(categoryField.getValue());
-            expense.setComment(commentField.getValue());
-
-            expenseService.saveExpense(expense);
-            dataProvider.refreshItem(expense);
-            dialog.close();
-        });
-        cancel.addClickListener(e -> dialog.close());
-
-        HorizontalLayout actions = new HorizontalLayout(save, cancel);
-        actions.setPadding(false);
-        actions.setSpacing(true);
-
-        VerticalLayout form = new VerticalLayout(nameField, amountField, taxField, dateField, categoryField, commentField, actions);
-        form.setPadding(false);
-        form.setSpacing(true);
-
-        dialog.add(form);
-        dialog.setWidth("420px");
-        dialog.open();
-    }
-
-    private String formatAmount(BigDecimal value) {
-        if (value == null) {
-            return "0.00";
-        }
-        return AMOUNT_FORMAT.format(value);
+    private String formatAmount(BigDecimal amount) {
+        return AMOUNT_FORMAT.format(amount == null ? BigDecimal.ZERO : amount);
     }
 
     private String safeText(String value) {
-        return value != null ? value : "-";
+        return value == null || value.isBlank() ? "-" : value;
     }
 
-    private int compareBigDecimal(BigDecimal a, BigDecimal b) {
-        BigDecimal left = a != null ? a : BigDecimal.ZERO;
-        BigDecimal right = b != null ? b : BigDecimal.ZERO;
-        return left.compareTo(right);
+    private String safeLower(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ENGLISH);
     }
 
-    private int compareLocalDate(LocalDate a, LocalDate b) {
-        if (a == null && b == null) {
-            return 0;
-        }
-        if (a == null) {
-            return 1;
-        }
-        if (b == null) {
-            return -1;
-        }
-        return a.compareTo(b);
+    private String normalizedFilter(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ENGLISH);
     }
 }

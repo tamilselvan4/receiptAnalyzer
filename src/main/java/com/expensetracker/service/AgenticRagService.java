@@ -71,13 +71,23 @@ public class AgenticRagService {
     private String extractInvoiceDataUsingGenAI(String ocrText) {
         String prompt = "From the following OCR text, extract the expense information and return it as a valid JSON object only. " +
                 "Do not include any explanation or formatting. The JSON must have the following fields:\n" +
-                "- name: Name of the vendor or service (e.g., company or provider name)\n" +
-                "- amount: Total amount charged\n" +
-                "- tax: Tax amount, if any (0 if not available)\n" +
-                "- currency: The currency of the invoice(if null, return default INR)\n" +
-                "- date: Date of the expense in YYYY-MM-DD format\n" +
-                "- category: A general category (e.g., Travel, Meals, Office Supplies, Bike Repair, etc.)\n" +
-                "- comment: Any additional relevant notes or invoice numbers\n\n" +
+                "- name: seller or vendor name\n" +
+                "- amount: invoice total amount\n" +
+                "- tax: tax amount, if any (0 if not available)\n" +
+                "- currency: 3-letter currency code (if missing, return INR)\n" +
+                "- date: invoice date in YYYY-MM-DD format\n" +
+                "- category: general category such as Travel, Meals, Office Supplies, Electronics, Services, General\n" +
+                "- comment: additional notes\n" +
+                "- invoice_number: invoice number if present\n" +
+                "- due_date: due date in YYYY-MM-DD format or null\n" +
+                "- seller_address: seller address or null\n" +
+                "- client_name: client name or null\n" +
+                "- client_address: client address or null\n" +
+                "- discount: discount amount or null\n" +
+                "- payment_method: payment method or null\n" +
+                "- bank_name: bank name or null\n" +
+                "- account_number: account number or null\n" +
+                "- line_items: array of objects with description, quantity, total_price\n\n" +
                 "Return only the JSON object with no markdown or extra characters.\n\n" +
                 "OCR Text:\n" + ocrText;
 
