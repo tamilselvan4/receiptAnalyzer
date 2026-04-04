@@ -1,142 +1,145 @@
 package com.expensetracker.service;
 
-import org.json.JSONObject;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.http.*;
+import com.expensetracker.config.InvoiceProcessingProperties;
 import com.google.genai.Client;
 import com.google.genai.types.GenerateContentResponse;
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 @Service
 public class AgenticRagService {
 
-    private final RestTemplate restTemplate = new RestTemplate();
-    private final OcrService ocrService = new OcrService();
-    private static final String OCR_API = "http://localhost:5050/extract-image";
+    private static final Logger log = LoggerFactory.getLogger(AgenticRagService.class);
 
-    private static final String GEMINI_API_KEY = "AIzaSyAuBo_zAhWGI6_xuN1ttesz5bykdCzTCVk";
+    private final OcrService ocrService;
+    private final InvoiceProcessingProperties properties;
+
+    public AgenticRagService(OcrService ocrService, InvoiceProcessingProperties properties) {
+        this.ocrService = ocrService;
+        this.properties = properties;
+    }
 
     public JSONObject analyzeReceipt(String fileName, byte[] fileBytes) throws IOException {
         AgentState state = new AgentState();
-        state.addThought("Starting Agentic RAG-based receipt analysis...");
+        state.addThought("Starting external fallback analysis");
 
-//        JSONObject ocrJson = callOCR(fileName, fileBytes);
         String ocrText = callOCR(fileName, fileBytes);
+        if (ocrText.isBlank()) {
+            throw new IOException("OCR returned no text for external fallback");
+        }
         state.addThought("Extracted OCR text, length: " + ocrText.length());
 
         String genAIJson = extractInvoiceDataUsingGenAI(ocrText);
         JSONObject aiExtracted = safeJsonParse(genAIJson);
-        state.addThought("AI model extracted fields successfully.");
-
-        JSONObject validated = performAnomalyCheck(aiExtracted);
-        state.addThought("Fraud detection & reasoning completed.");
+        state.addThought("External model returned structured output");
 
         JSONObject finalOutput = new JSONObject();
         finalOutput.put("ocr_text", ocrText);
         finalOutput.put("structured_data", aiExtracted);
-        finalOutput.put("validation", validated);
         finalOutput.put("agent_trace", state.getThoughts());
-        finalOutput.put("status", "Agentic RAG Processing Completed");
-
+        finalOutput.put("status", "external-fallback-completed");
         return finalOutput;
     }
 
     private String callOCR(String fileName, byte[] fileBytes) {
-
-        String uuid = "1_" + UUID.randomUUID();
-        int dotIndex = fileName.lastIndexOf('.');
-        String extension = (dotIndex > 0) ? fileName.substring(fileName.lastIndexOf('.') + 1) : "";
-
+        String documentId = "receipt_" + UUID.randomUUID();
+        String extension = resolveExtension(fileName);
         File tempFile = null;
         try {
-            tempFile = File.createTempFile(uuid, extension);
-
-        try (FileOutputStream fos = new FileOutputStream(tempFile)) {
-            fos.write(fileBytes);
+            tempFile = File.createTempFile(documentId, extension);
+            try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                fos.write(fileBytes);
+            }
+            return ocrService.extractText(tempFile.getAbsolutePath(), documentId, extension);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to prepare temporary file for OCR", exception);
+        } finally {
+            if (tempFile != null && !tempFile.delete()) {
+                log.debug("Temporary OCR file was not deleted: {}", tempFile.getAbsolutePath());
+            }
         }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-        return ocrService.extractText(tempFile.getAbsolutePath(), uuid, extension, "/Users/tamilselvans/M.E/tamil/test-samples/");
-
-//        return new JSONObject(extractedText);
     }
 
     private String extractInvoiceDataUsingGenAI(String ocrText) {
-        String prompt = "From the following OCR text, extract the expense information and return it as a valid JSON object only. " +
-                "Do not include any explanation or formatting. The JSON must have the following fields:\n" +
-                "- name: seller or vendor name\n" +
-                "- amount: invoice total amount\n" +
-                "- tax: tax amount, if any (0 if not available)\n" +
-                "- currency: 3-letter currency code (if missing, return INR)\n" +
-                "- date: invoice date in YYYY-MM-DD format\n" +
-                "- category: general category such as Travel, Meals, Office Supplies, Electronics, Services, General\n" +
-                "- comment: additional notes\n" +
-                "- invoice_number: invoice number if present\n" +
-                "- due_date: due date in YYYY-MM-DD format or null\n" +
-                "- seller_address: seller address or null\n" +
-                "- client_name: client name or null\n" +
-                "- client_address: client address or null\n" +
-                "- discount: discount amount or null\n" +
-                "- payment_method: payment method or null\n" +
-                "- bank_name: bank name or null\n" +
-                "- account_number: account number or null\n" +
-                "- line_items: array of objects with description, quantity, total_price\n\n" +
-                "Return only the JSON object with no markdown or extra characters.\n\n" +
-                "OCR Text:\n" + ocrText;
-
-        Client client = Client.builder().apiKey(GEMINI_API_KEY).build();
-        GenerateContentResponse response =
-                client.models.generateContent(
-                        "gemini-2.5-flash",
-                        prompt,
-                        null);
-        return response.text();
-    }
-
-    private JSONObject performAnomalyCheck(JSONObject data) {
-        JSONObject result = new JSONObject();
-        double amount = data.optDouble("amount", 0);
-        double tax = data.optDouble("tax", 0);
-        String vendor = data.optString("name", "unknown");
-
-        if (amount < 0 || tax < 0) {
-            result.put("anomaly", true);
-            result.put("reason", "Negative values detected");
-        } else if (amount > 100000) {
-            result.put("anomaly", true);
-            result.put("reason", "Unusually high expense detected");
-        } else if (vendor.equalsIgnoreCase("unknown")) {
-            result.put("anomaly", true);
-            result.put("reason", "Vendor name missing or unreadable");
-        } else {
-            result.put("anomaly", false);
-            result.put("reason", "No fraud detected");
+        String apiKey = properties.getExternalFallback().getGeminiApiKey();
+        if (!properties.getExternalFallback().isEnabled()) {
+            throw new IllegalStateException("External fallback is disabled");
+        }
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("GEMINI_API_KEY is not configured");
         }
 
-        return result;
+        String prompt = "From the following OCR text, extract the expense information and return it as a valid JSON object only. "
+                + "Do not include any explanation or formatting. The JSON must have the following fields:\n"
+                + "- name: seller or vendor name\n"
+                + "- amount: invoice total amount\n"
+                + "- tax: tax amount, if any (0 if not available)\n"
+                + "- currency: 3-letter currency code (if missing, return INR)\n"
+                + "- date: invoice date in YYYY-MM-DD format\n"
+                + "- category: general category such as Travel, Meals, Office Supplies, Electronics, Services, General\n"
+                + "- comment: additional notes\n"
+                + "- invoice_number: invoice number if present\n"
+                + "- due_date: due date in YYYY-MM-DD format or null\n"
+                + "- seller_address: seller address or null\n"
+                + "- client_name: client name or null\n"
+                + "- client_address: client address or null\n"
+                + "- discount: discount amount or null\n"
+                + "- payment_method: payment method or null\n"
+                + "- bank_name: bank name or null\n"
+                + "- account_number: account number or null\n"
+                + "- line_items: array of objects with description, quantity, total_price\n\n"
+                + "Return only the JSON object with no markdown or extra characters.\n\n"
+                + "OCR Text:\n" + ocrText;
+
+        Client client = Client.builder().apiKey(apiKey).build();
+        GenerateContentResponse response = client.models.generateContent(
+                properties.getExternalFallback().getModel(),
+                prompt,
+                null);
+        return response.text();
     }
 
     private JSONObject safeJsonParse(String jsonText) {
         try {
-            return new JSONObject(jsonText);
-        } catch (Exception e) {
+            String sanitized = jsonText == null ? "" : jsonText
+                    .replace("```json", "")
+                    .replace("```", "")
+                    .trim();
+            return new JSONObject(sanitized);
+        } catch (Exception exception) {
             JSONObject fallback = new JSONObject();
-            fallback.put("error", "Invalid JSON returned by GenAI");
+            fallback.put("error", "Invalid JSON returned by external model");
             fallback.put("raw_output", jsonText);
             return fallback;
         }
     }
 
+    private String resolveExtension(String fileName) {
+        int dotIndex = fileName == null ? -1 : fileName.lastIndexOf('.');
+        if (dotIndex < 0 || dotIndex == fileName.length() - 1) {
+            return ".png";
+        }
+        return fileName.substring(dotIndex);
+    }
+
     static class AgentState {
         private final List<String> thoughts = new ArrayList<>();
-        void addThought(String t) { thoughts.add("🤖 " + t); }
-        List<String> getThoughts() { return thoughts; }
+
+        void addThought(String thought) {
+            thoughts.add("[agent] " + thought);
+        }
+
+        List<String> getThoughts() {
+            return thoughts;
+        }
     }
 }

@@ -1,174 +1,142 @@
 package com.expensetracker.service;
 
-import net.sourceforge.tess4j.*;
-import org.apache.commons.io.FileUtils;
+import com.expensetracker.config.InvoiceProcessingProperties;
+import net.sourceforge.tess4j.ITesseract;
+import net.sourceforge.tess4j.Tesseract;
+import net.sourceforge.tess4j.TesseractException;
 import org.bytedeco.javacpp.Loader;
 import org.bytedeco.opencv.opencv_java;
-import org.springframework.http.HttpEntity;
-import org.springframework.stereotype.Service;
 import org.opencv.core.Mat;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
-import org.json.JSONArray;
-import org.json.JSONObject;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.RestTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 
 @Service
 public class OcrService {
 
+    private static final Logger log = LoggerFactory.getLogger(OcrService.class);
+    private static final boolean OPENCV_AVAILABLE;
+
     static {
-        Loader.load(opencv_java.class);
+        boolean loaded;
+        try {
+            Loader.load(opencv_java.class);
+            loaded = true;
+        } catch (Throwable throwable) {
+            loaded = false;
+        }
+        OPENCV_AVAILABLE = loaded;
     }
 
-    public static String extractText(File file) {
-        ITesseract tesseract = new Tesseract();
-        tesseract.setDatapath("/Users/tamilselvans/M.E/project/tess4j/Tess4J");
-        tesseract.setLanguage("eng");
+    private final InvoiceProcessingProperties properties;
 
+    public OcrService(InvoiceProcessingProperties properties) {
+        this.properties = properties;
+    }
+
+    public String extractText(String path, String documentId, String extension) {
+        Path workspace = null;
         try {
-            return tesseract.doOCR(file);
-        } catch (TesseractException e) {
-            throw new RuntimeException("Error during OCR", e);
+            workspace = Files.createTempDirectory("ocr-" + documentId + "-");
+            Path preprocessedImage = preprocess(path, workspace, documentId, extension);
+            String text = doOcr(preprocessedImage.toFile());
+            persistArtifactsIfEnabled(preprocessedImage, documentId, extension, text);
+            return text;
+        } catch (Exception exception) {
+            log.warn("OCR failed for {}: {}", path, exception.getMessage());
+            return "";
+        } finally {
+            deleteDirectoryQuietly(workspace);
         }
     }
 
-    public String extractText(String path, String uuid, String ext, String expUploadPath) {
-
-        preprocess(path, uuid, ext, expUploadPath);
-
+    private String doOcr(File file) throws TesseractException {
         ITesseract tesseract = new Tesseract();
-
-        tesseract.setDatapath("/opt/homebrew/share/tessdata");
-        tesseract.setLanguage("eng");
-        tesseract.setPageSegMode(1); // Automatic page segmentation
-        tesseract.setOcrEngineMode(1); // Neural nets LSTM engine
-
-        try {
-//            File file = new File("/Users/tamilselvans/Downloads/temp.png");
-            File file = new File(expUploadPath + "files/" + uuid + "." + ext);
-            String txt = tesseract.doOCR(file);
-
-            File txtFile = new File(expUploadPath + "txt/", uuid + ".txt");
-            try {
-                FileUtils.writeStringToFile(txtFile, txt, StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                System.out.println(e);
-            }
-
-            return txt;
-        } catch (TesseractException e) {
-            System.err.println("Error during OCR: " + e.getMessage());
+        String dataPath = properties.getOcr().getTesseractDataPath();
+        if (dataPath != null && !dataPath.isBlank()) {
+            tesseract.setDatapath(dataPath);
         }
-        return "";
+        tesseract.setLanguage(properties.getOcr().getLanguage());
+        tesseract.setPageSegMode(properties.getOcr().getPageSegMode());
+        tesseract.setOcrEngineMode(properties.getOcr().getEngineMode());
+        return tesseract.doOCR(file);
     }
 
-    public void preprocess(String path, String uuid, String ext, String expUploadPath) {
+    private Path preprocess(String sourcePath, Path workspace, String documentId, String extension) throws Exception {
+        String normalizedExtension = normalizeExtension(extension);
+        Path outputPath = workspace.resolve(documentId + normalizedExtension);
+        if (!OPENCV_AVAILABLE) {
+            Files.copy(Path.of(sourcePath), outputPath, StandardCopyOption.REPLACE_EXISTING);
+            log.debug("OpenCV unavailable; using source image without preprocessing");
+            return outputPath;
+        }
 
-        Mat img = Imgcodecs.imread(path);
-
-        if (img.empty()) {
-            System.err.println("⚠️ Could not read the image at: " + path);
-            return;
+        Mat image = Imgcodecs.imread(sourcePath);
+        if (image.empty()) {
+            Files.copy(Path.of(sourcePath), outputPath, StandardCopyOption.REPLACE_EXISTING);
+            log.warn("Could not read image at {}; OCR will use the original file", sourcePath);
+            return outputPath;
         }
 
         Mat gray = new Mat();
-        Imgproc.cvtColor(img, gray, Imgproc.COLOR_BGR2GRAY);
+        Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGR2GRAY);
 
-        Mat thresh = new Mat();
-        Imgproc.threshold(gray, thresh, 150, 255, Imgproc.THRESH_BINARY);
-
-//        String outPath = "/Users/tamilselvans/Downloads/temp.png";
-        String outPath = expUploadPath + "files/" + uuid + "." + ext;
-        Imgcodecs.imwrite(outPath, thresh);
-
-        System.out.println("✅ Preprocessed image saved at: " + outPath);
+        Mat thresholded = new Mat();
+        Imgproc.threshold(gray, thresholded, 150, 255, Imgproc.THRESH_BINARY);
+        Imgcodecs.imwrite(outputPath.toString(), thresholded);
+        return outputPath;
     }
 
-    public static String extractTextWithBoxes(String imagePath) {
+    private void persistArtifactsIfEnabled(Path processedImage, String documentId, String extension, String text) {
+        if (!properties.getOcr().isPersistArtifacts()) {
+            return;
+        }
         try {
-            File file = new File(imagePath);
-            BufferedImage img = ImageIO.read(file);  // convert file to BufferedImage
+            Path basePath = Path.of(properties.getStorage().getUploadPath());
+            Path filesDir = basePath.resolve("files");
+            Path textDir = basePath.resolve("txt");
+            Files.createDirectories(filesDir);
+            Files.createDirectories(textDir);
 
-            ITesseract tesseract = new Tesseract();
-            tesseract.setDatapath("/opt/homebrew/share/tessdata");
-            tesseract.setLanguage("eng");
-            tesseract.setPageSegMode(1); // Automatic page segmentation
-            tesseract.setOcrEngineMode(1); // LSTM engine
-
-            // Get word-level OCR results
-            List<Word> words = tesseract.getWords(img, ITessAPI.TessPageIteratorLevel.RIL_WORD);
-
-            JSONArray textArray = new JSONArray();
-            JSONArray boxesArray = new JSONArray();
-
-            for (Word word : words) {
-                textArray.put(word.getText());
-
-                int x0 = word.getBoundingBox().x;
-                int y0 = word.getBoundingBox().y;
-                int x1 = x0 + word.getBoundingBox().width;
-                int y1 = y0 + word.getBoundingBox().height;
-
-                JSONArray box = new JSONArray();
-                box.put(x0);
-                box.put(y0);
-                box.put(x1);
-                box.put(y1);
-                boxesArray.put(box);
-            }
-
-            JSONObject result = new JSONObject();
-            result.put("text", textArray);
-            result.put("boxes", boxesArray);
-
-            // Optional: save to a file
-            // Files.write(Paths.get("output.json"), result.toString(2).getBytes(StandardCharsets.UTF_8));
-
-            System.out.println(result);
-            return result.toString();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "{}";
+            String normalizedExtension = normalizeExtension(extension);
+            Files.copy(processedImage, filesDir.resolve(documentId + normalizedExtension), StandardCopyOption.REPLACE_EXISTING);
+            Files.writeString(textDir.resolve(documentId + ".txt"), text == null ? "" : text, StandardCharsets.UTF_8);
+        } catch (Exception exception) {
+            log.warn("Failed to persist OCR artifacts: {}", exception.getMessage());
         }
     }
 
-//    public static void main(String[] args) {
-//        OcrService ocrService = new OcrService();
-//        String result = ocrService.extractText("/Users/tamilselvans/Downloads/invoice.png", UUID.randomUUID().toString(), "png", "/Users/tamilselvans/M.E/project/uploads/");
-//        System.out.println("Extracted Text:");
-//        System.out.println(result);
-//    }
+    private void deleteDirectoryQuietly(Path directory) {
+        if (directory == null) {
+            return;
+        }
+        try {
+            Files.walk(directory)
+                    .sorted((left, right) -> right.compareTo(left))
+                    .forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (Exception ignored) {
+                            log.debug("Unable to delete temporary OCR path {}", path);
+                        }
+                    });
+        } catch (Exception ignored) {
+            log.debug("Unable to delete OCR workspace {}", directory);
+        }
+    }
 
-    public static void main(String[] args) throws Exception {
-//        File file = new File("/Users/tamilselvans/Downloads/invoice.png");
-//        BufferedImage img = ImageIO.read(file);  // convert file to BufferedImage
-//
-//        ITesseract tesseract = new Tesseract();
-//        tesseract.setDatapath("/opt/homebrew/share/tessdata");
-//        tesseract.setLanguage("eng");
-//
-//        // Use BufferedImage + level to get word list
-//        List<Word> words = tesseract.getWords(img, ITessAPI.TessPageIteratorLevel.RIL_WORD);
-//
-//        for (Word word : words) {
-//            String text = word.getText();
-//            int x0 = word.getBoundingBox().x;
-//            int y0 = word.getBoundingBox().y;
-//            int x1 = x0 + word.getBoundingBox().width;
-//            int y1 = y0 + word.getBoundingBox().height;
-//
-//            System.out.println(text + " -> [" + x0 + "," + y0 + "," + x1 + "," + y1 + "]");
-//        }
-        extractTextWithBoxes("/Users/tamilselvans/Downloads/invoice.png");
+    private String normalizeExtension(String extension) {
+        if (extension == null || extension.isBlank()) {
+            return ".png";
+        }
+        return extension.startsWith(".") ? extension : "." + extension;
     }
 }
