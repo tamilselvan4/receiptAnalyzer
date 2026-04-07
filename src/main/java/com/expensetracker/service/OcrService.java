@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 
 @Service
 public class OcrService {
@@ -59,12 +60,22 @@ public class OcrService {
     }
 
     private String doOcr(File file) throws TesseractException {
-        ITesseract tesseract = new Tesseract();
-        String dataPath = properties.getOcr().getTesseractDataPath();
-        if (dataPath != null && !dataPath.isBlank()) {
-            tesseract.setDatapath(dataPath);
+        Path dataPath = resolveTesseractDataPath();
+        if (dataPath == null) {
+            log.warn("Skipping OCR because no valid tessdata directory was found. Configure invoice.processing.ocr.tesseract-data-path or TESSDATA_PREFIX.");
+            return "";
         }
-        tesseract.setLanguage(properties.getOcr().getLanguage());
+
+        String language = properties.getOcr().getLanguage();
+        Path trainedDataFile = dataPath.resolve(language + ".traineddata");
+        if (!Files.isRegularFile(trainedDataFile)) {
+            log.warn("Skipping OCR because language data file is missing: {}", trainedDataFile);
+            return "";
+        }
+
+        ITesseract tesseract = new Tesseract();
+        tesseract.setDatapath(dataPath.toString());
+        tesseract.setLanguage(language);
         tesseract.setPageSegMode(properties.getOcr().getPageSegMode());
         tesseract.setOcrEngineMode(properties.getOcr().getEngineMode());
         return tesseract.doOCR(file);
@@ -138,5 +149,40 @@ public class OcrService {
             return ".png";
         }
         return extension.startsWith(".") ? extension : "." + extension;
+    }
+
+    private Path resolveTesseractDataPath() {
+        String configuredPath = properties.getOcr().getTesseractDataPath();
+        if (configuredPath != null && !configuredPath.isBlank()) {
+            Path configured = Path.of(configuredPath);
+            if (Files.isDirectory(configured)) {
+                return configured;
+            }
+            log.warn("Configured tessdata path does not exist or is not a directory: {}", configuredPath);
+        }
+
+        String envPath = System.getenv("TESSDATA_PREFIX");
+        if (envPath != null && !envPath.isBlank()) {
+            Path env = Path.of(envPath);
+            if (Files.isDirectory(env)) {
+                return env;
+            }
+            log.warn("TESSDATA_PREFIX does not point to a valid directory: {}", envPath);
+        }
+
+        for (String candidatePath : List.of(
+                "/opt/homebrew/share/tessdata",
+                "/usr/local/share/tessdata",
+                "/usr/share/tessdata",
+                "/usr/share/tesseract-ocr/4.00/tessdata",
+                "/usr/share/tesseract-ocr/5/tessdata"
+        )) {
+            Path candidate = Path.of(candidatePath);
+            if (Files.isDirectory(candidate)) {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 }
