@@ -1,0 +1,2 @@
+cd /Users/tamilselvans/M.E/tamil/project/expensetracker/ml
+.venv-py313/bin/python serve_model.py --model-dir training_data/model
