@@ -13,6 +13,8 @@ import java.util.Optional;
 public interface ExpenseRepo extends JpaRepository<Expense, Long> {
     List<Expense> getByUserId(long userId);
 
+    List<Expense> findByUserId(long userId);
+
     @Query("""
         select distinct expense
         from Expense expense

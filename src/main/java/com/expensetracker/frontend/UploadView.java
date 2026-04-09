@@ -1,11 +1,17 @@
 package com.expensetracker.frontend;
 
+import com.expensetracker.config.ExpenseCategoryCatalog;
+import com.expensetracker.model.ClassificationResult;
 import com.expensetracker.model.Expense;
 import com.expensetracker.model.ExpenseExtractionResult;
+import com.expensetracker.model.RiskAssessment;
 import com.expensetracker.model.User;
 import com.expensetracker.model.Validation;
+import com.expensetracker.service.ExpenseClassificationService;
 import com.expensetracker.service.ExpenseExtractionCoordinator;
 import com.expensetracker.service.ExpenseService;
+import com.expensetracker.service.InvoiceValidationService;
+import com.expensetracker.service.RiskAssessmentService;
 import com.expensetracker.service.UserService;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -21,8 +27,12 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
+import com.vaadin.flow.router.AfterNavigationEvent;
+import com.vaadin.flow.router.AfterNavigationObserver;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.annotation.UIScope;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.springframework.stereotype.Component;
 
 import java.util.Base64;
@@ -31,30 +41,45 @@ import java.util.UUID;
 @Route("/add")
 @UIScope
 @Component
-public class UploadView extends VerticalLayout {
+public class UploadView extends VerticalLayout implements AfterNavigationObserver {
 
     private final Image imagePreview = new Image();
     private final MemoryBuffer buffer = new MemoryBuffer();
     private final Upload upload = new Upload(buffer);
     private final Checkbox useExternalAICheckBox = new Checkbox("Allow API fallback", true);
-    private final InvoiceEditorForm invoiceEditorForm = new InvoiceEditorForm();
+    private final InvoiceEditorForm invoiceEditorForm;
 
     private final ExpenseService expenseService;
     private final UserService userService;
     private final ExpenseExtractionCoordinator extractionCoordinator;
+    private final ExpenseClassificationService classificationService;
+    private final InvoiceValidationService validationService;
+    private final RiskAssessmentService riskAssessmentService;
 
     private Expense expense = new Expense();
     private Validation validation = new Validation();
+    private ClassificationResult classificationResult;
+    private RiskAssessment riskAssessment;
+    private String rawOcrText;
 
     public UploadView(ExpenseService expenseService,
                       UserService userService,
-                      ExpenseExtractionCoordinator extractionCoordinator) {
+                      ExpenseExtractionCoordinator extractionCoordinator,
+                      ExpenseCategoryCatalog expenseCategoryCatalog,
+                      ExpenseClassificationService classificationService,
+                      InvoiceValidationService validationService,
+                      RiskAssessmentService riskAssessmentService) {
         this.expenseService = expenseService;
         this.userService = userService;
         this.extractionCoordinator = extractionCoordinator;
+        this.classificationService = classificationService;
+        this.validationService = validationService;
+        this.riskAssessmentService = riskAssessmentService;
+        this.invoiceEditorForm = new InvoiceEditorForm(expenseCategoryCatalog);
 
         configureLayout();
         configureUpload();
+        invoiceEditorForm.setChangeListener(this::refreshDerivedSignals);
 
         invoiceEditorForm.setExpense(expense);
         invoiceEditorForm.setValidation(null);
@@ -96,7 +121,7 @@ public class UploadView extends VerticalLayout {
     }
 
     private HorizontalLayout buildHeader() {
-        H1 title = new H1("Invoice Intake");
+        H1 title = new H1("Invoice Details");
         title.getStyle()
                 .set("margin", "0")
                 .set("fontSize", "2rem")
@@ -179,6 +204,7 @@ public class UploadView extends VerticalLayout {
         String extension = resolveExtension(fileName);
 
         try {
+            User currentUser = userService.getUser(1L);
             byte[] bytes = buffer.getInputStream().readAllBytes();
             if (mimeType != null && mimeType.startsWith("image/")) {
                 String base64 = Base64.getEncoder().encodeToString(bytes);
@@ -187,14 +213,18 @@ public class UploadView extends VerticalLayout {
                 imagePreview.setSrc("https://cdn-icons-png.flaticon.com/512/337/337946.png");
             }
 
-            ExpenseExtractionResult result = extractionCoordinator.extract(fileName, bytes, useExternalAICheckBox.getValue());
+            ExpenseExtractionResult result = extractionCoordinator.extract(fileName, bytes, useExternalAICheckBox.getValue(), currentUser.getId());
             expense = result.getExpense();
             validation = result.getValidation();
+            classificationResult = result.getClassificationResult();
+            riskAssessment = result.getRiskAssessment();
+            rawOcrText = result.getRawOcrText();
 
-            expense.setUser(userService.getUser(1L));
+            expense.setUser(currentUser);
             expense.setFileName("1_" + UUID.randomUUID() + "." + extension);
 
             invoiceEditorForm.setExpense(expense);
+            invoiceEditorForm.setAssessment(classificationResult, riskAssessment);
             invoiceEditorForm.setValidation(validation);
         } catch (Exception exception) {
             Notification.show("Failed to process uploaded file", 3000, Notification.Position.TOP_CENTER);
@@ -203,6 +233,7 @@ public class UploadView extends VerticalLayout {
 
     private void saveExpense() {
         invoiceEditorForm.writeToExpense(expense);
+        refreshDerivedSignals();
         if (expense.getAmount() == null) {
             Notification.show("Amount is required before saving", 2500, Notification.Position.TOP_CENTER);
             return;
@@ -221,10 +252,65 @@ public class UploadView extends VerticalLayout {
     private void resetState() {
         expense = new Expense();
         validation = new Validation();
+        classificationResult = null;
+        riskAssessment = null;
+        rawOcrText = null;
         invoiceEditorForm.setExpense(expense);
+        invoiceEditorForm.setAssessment(null, null);
         invoiceEditorForm.setValidation(null);
         imagePreview.setSrc("");
         upload.clearFileList();
+    }
+
+    private void refreshDerivedSignals() {
+        if (!hasReviewableContent()) {
+            return;
+        }
+        invoiceEditorForm.writeToExpense(expense);
+        classificationResult = classificationService.classify(expense, null, rawOcrText);
+        validation = validationService.validate(expense);
+        Long userId = expense.getUser() == null ? null : expense.getUser().getId();
+        riskAssessment = riskAssessmentService.assess(expense, validation, classificationResult, null, null, userId);
+        applyDerivedAssessment();
+        invoiceEditorForm.setAssessment(classificationResult, riskAssessment);
+        invoiceEditorForm.setValidation(validation);
+    }
+
+    private boolean hasReviewableContent() {
+        return expense.getAmount() != null
+                || (expense.getName() != null && !expense.getName().isBlank())
+                || (expense.getInvoiceNumber() != null && !expense.getInvoiceNumber().isBlank())
+                || (expense.getLineItems() != null && !expense.getLineItems().isEmpty())
+                || rawOcrText != null;
+    }
+
+    private void applyDerivedAssessment() {
+        if (classificationResult != null) {
+            expense.setPredictedCategory(classificationResult.getPredictedCategory());
+            expense.setClassificationConfidence(classificationResult.getConfidence());
+            expense.setClassificationModelVersion(classificationResult.getModelVersion());
+            expense.setClassificationAlternativesJson(serializeAlternatives());
+        }
+        if (riskAssessment != null) {
+            expense.setRiskScore(riskAssessment.getRiskScore());
+            expense.setRiskBand(riskAssessment.getRiskBand());
+            expense.setRiskModelVersion(riskAssessment.getModelVersion());
+            expense.setReviewRequired(riskAssessment.isReviewRequired());
+            expense.setRiskSignalsJson(new JSONArray(riskAssessment.getSignals() == null ? java.util.List.of() : riskAssessment.getSignals()).toString());
+            expense.setRiskReasonSummary(riskAssessment.getReasonSummary());
+            expense.setRiskSource(riskAssessment.getSource());
+        }
+    }
+
+    private String serializeAlternatives() {
+        JSONArray array = new JSONArray();
+        if (classificationResult.getAlternatives() == null) {
+            return array.toString();
+        }
+        classificationResult.getAlternatives().forEach(alternative -> array.put(new JSONObject()
+                .put("label", alternative.getLabel())
+                .put("confidence", alternative.getConfidence())));
+        return array.toString();
     }
 
     private String resolveExtension(String fileName) {
@@ -232,5 +318,10 @@ public class UploadView extends VerticalLayout {
             return "png";
         }
         return fileName.substring(fileName.lastIndexOf('.') + 1);
+    }
+
+    @Override
+    public void afterNavigation(AfterNavigationEvent event) {
+        resetState();
     }
 }

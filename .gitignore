@@ -33,6 +33,7 @@ build/
 .vscode/
 
 .env
+hs_err_pid*.log
 
 ### ML workspace ###
 ml/.venv*/

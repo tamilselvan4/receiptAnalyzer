@@ -91,6 +91,42 @@ public class Expense {
     @Column(name = "file_name", length = 70)
     private String fileName;
 
+    @Column(name = "predicted_category")
+    private String predictedCategory;
+
+    @Column(name = "classification_confidence", precision = 19, scale = 4)
+    private BigDecimal classificationConfidence;
+
+    @Column(name = "classification_model_version", length = 100)
+    private String classificationModelVersion;
+
+    @Lob
+    @Column(name = "classification_alternatives_json", columnDefinition = "TEXT")
+    private String classificationAlternativesJson;
+
+    @Column(name = "risk_score", precision = 19, scale = 4)
+    private BigDecimal riskScore;
+
+    @Column(name = "risk_band", length = 16)
+    private String riskBand;
+
+    @Column(name = "risk_model_version", length = 100)
+    private String riskModelVersion;
+
+    @Column(name = "review_required")
+    private Boolean reviewRequired;
+
+    @Lob
+    @Column(name = "risk_signals_json", columnDefinition = "TEXT")
+    private String riskSignalsJson;
+
+    @Lob
+    @Column(name = "risk_reason_summary", columnDefinition = "TEXT")
+    private String riskReasonSummary;
+
+    @Column(name = "risk_source", length = 32)
+    private String riskSource;
+
     @JsonManagedReference
     @OneToMany(mappedBy = "expense", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineIndex ASC")
@@ -269,6 +305,94 @@ public class Expense {
 
     public void setFileName(String fileName) {
         this.fileName = fileName;
+    }
+
+    public String getPredictedCategory() {
+        return predictedCategory;
+    }
+
+    public void setPredictedCategory(String predictedCategory) {
+        this.predictedCategory = predictedCategory;
+    }
+
+    public BigDecimal getClassificationConfidence() {
+        return classificationConfidence;
+    }
+
+    public void setClassificationConfidence(BigDecimal classificationConfidence) {
+        this.classificationConfidence = classificationConfidence;
+    }
+
+    public String getClassificationModelVersion() {
+        return classificationModelVersion;
+    }
+
+    public void setClassificationModelVersion(String classificationModelVersion) {
+        this.classificationModelVersion = classificationModelVersion;
+    }
+
+    public String getClassificationAlternativesJson() {
+        return classificationAlternativesJson;
+    }
+
+    public void setClassificationAlternativesJson(String classificationAlternativesJson) {
+        this.classificationAlternativesJson = classificationAlternativesJson;
+    }
+
+    public BigDecimal getRiskScore() {
+        return riskScore;
+    }
+
+    public void setRiskScore(BigDecimal riskScore) {
+        this.riskScore = riskScore;
+    }
+
+    public String getRiskBand() {
+        return riskBand;
+    }
+
+    public void setRiskBand(String riskBand) {
+        this.riskBand = riskBand;
+    }
+
+    public String getRiskModelVersion() {
+        return riskModelVersion;
+    }
+
+    public void setRiskModelVersion(String riskModelVersion) {
+        this.riskModelVersion = riskModelVersion;
+    }
+
+    public Boolean getReviewRequired() {
+        return reviewRequired;
+    }
+
+    public void setReviewRequired(Boolean reviewRequired) {
+        this.reviewRequired = reviewRequired;
+    }
+
+    public String getRiskSignalsJson() {
+        return riskSignalsJson;
+    }
+
+    public void setRiskSignalsJson(String riskSignalsJson) {
+        this.riskSignalsJson = riskSignalsJson;
+    }
+
+    public String getRiskReasonSummary() {
+        return riskReasonSummary;
+    }
+
+    public void setRiskReasonSummary(String riskReasonSummary) {
+        this.riskReasonSummary = riskReasonSummary;
+    }
+
+    public String getRiskSource() {
+        return riskSource;
+    }
+
+    public void setRiskSource(String riskSource) {
+        this.riskSource = riskSource;
     }
 
     public List<ExpenseLineItem> getLineItems() {
