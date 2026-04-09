@@ -1,0 +1,181 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 5 0 R /Resources << /Font << /F1 4 0 R >> >> >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 2528 >>
+stream
+BT
+/F1 18 Tf
+1 0 0 1 50 750 Tm
+(Expense Tracker App Summary) Tj
+ET
+BT
+/F1 12 Tf
+1 0 0 1 50 722 Tm
+(What it is) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 706 Tm
+(A Spring Boot and Vaadin expense tracker that lets users upload) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 692 Tm
+(receipts/invoices, extract data via OCR/AI, and store expenses.) Tj
+ET
+BT
+/F1 12 Tf
+1 0 0 1 50 672 Tm
+(Who it's for) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 656 Tm
+(Individuals or small teams who track expenses and want) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 642 Tm
+(receipt-assisted entry in a simple web UI.) Tj
+ET
+BT
+/F1 12 Tf
+1 0 0 1 50 622 Tm
+(What it does) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 606 Tm
+(- Upload receipt images/PDFs and preview them in the UI.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 592 Tm
+(- Extract text via OCR \(Tesseract/OpenCV\) or a local OCR API.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 578 Tm
+(- Parse OCR into structured expense fields with AI \(Gemini or LM Studio\).) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 564 Tm
+(- Show expenses with totals and a grid dashboard.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 550 Tm
+(- Persist expenses/users/invoices in MySQL via JPA repositories.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 536 Tm
+(- Expose /api/invoices/upload for raw file OCR extraction.) Tj
+ET
+BT
+/F1 12 Tf
+1 0 0 1 50 516 Tm
+(How it works) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 500 Tm
+(Vaadin UI \(HomeView, UploadView\) -> Spring services) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 486 Tm
+(\(ExpenseService, UserService, OCR/AI services\) -> JPA) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 472 Tm
+(repositories -> MySQL \(expenses, users, invoices\).) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 458 Tm
+(OCR pipeline: UploadView -> LocalAiExtractionService ->) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 444 Tm
+(local OCR API \(localhost:5050\) OR OcrService \(Tesseract) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 430 Tm
+(+ OpenCV\) -> AI parser \(Gemini or LM Studio at) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 416 Tm
+(localhost:1234\) -> Expense + Validation.) Tj
+ET
+BT
+/F1 12 Tf
+1 0 0 1 50 396 Tm
+(How to run) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 380 Tm
+(- Java 21 is required \(pom.xml\).) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 366 Tm
+(- Configure MySQL at jdbc:mysql://localhost:3306/expense) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 352 Tm
+(- with user root and the password in application.properties.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 338 Tm
+(- Start the app: ./mvnw spring-boot:run) Tj
+ET
+BT
+/F1 12 Tf
+1 0 0 1 50 318 Tm
+(Not found in repo) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 302 Tm
+(DB schema/migrations; setup steps for the OCR API \(port 5050\)) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 50 288 Tm
+(and LM Studio \(port 1234\).) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+2891
+%%EOF

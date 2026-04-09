@@ -1,0 +1,14 @@
+Flask==3.1.0
+joblib==1.4.2
+pandas==2.3.0
+Pillow==11.1.0
+python-dateutil==2.9.0.post0
+pytesseract==0.3.13
+scikit-learn==1.6.1
+torch>=2.6.0
+transformers>=4.49.0
+datasets>=3.2.0
+accelerate>=1.4.0
+sentencepiece>=0.2.0
+evaluate>=0.4.3
+sentence-transformers>=3.4.1
